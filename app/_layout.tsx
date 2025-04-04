@@ -36,11 +36,11 @@ export default function RootLayout() {
           name="index"
           options={{
             headerShown: false,
-            tabBarStyle: { display: 'none' }, // Hide the bottom tabs for OnboardingScreen
           }}
         />
         <Stack.Screen name="Home" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="login-selection" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />
