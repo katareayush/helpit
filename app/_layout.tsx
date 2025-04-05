@@ -31,16 +31,19 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
-        {/* Register the OnboardingScreen */}
         <Stack.Screen
           name="index"
           options={{
             headerShown: false,
-            tabBarStyle: { display: 'none' }, // Hide the bottom tabs for OnboardingScreen
           }}
         />
         <Stack.Screen name="Home" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="login-selection" options={{ headerShown: false }} />
+        <Stack.Screen name="Welcome_screen" options={{ headerShown: false }} />
+        <Stack.Screen name="SignupScreenC" options={{ headerShown: false }} />
+        <Stack.Screen name="signInC" options={{ headerShown: false }} />
+        <Stack.Screen name="SignInService" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />
