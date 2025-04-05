@@ -10,7 +10,7 @@ const LoginAsScreen = () => {
   };
 
   const handleProviderSelection = () => {
-    router.push('/provider-login');
+    router.push('/SignInService'); // Changed from '/' to '/SignInService'
   };
 
   return (
