@@ -8,8 +8,19 @@ import {
   SafeAreaView,
   StatusBar,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 
 const Welcome_screen = () => {
+  const router = useRouter();
+
+  const handleCreateAccount = () => {
+    router.push('/SignupScreenC');
+  };
+
+  const handleLogin = () => {
+    router.push('/signInC');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
@@ -38,11 +49,19 @@ const Welcome_screen = () => {
       
       {/* Buttons */}
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.createAccountButton} activeOpacity={0.8}>
+        <TouchableOpacity 
+          style={styles.createAccountButton} 
+          activeOpacity={0.8}
+          onPress={handleCreateAccount}
+        >
           <Text style={styles.createAccountButtonText}>Create an account</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.loginButton} activeOpacity={0.8}>
+        <TouchableOpacity 
+          style={styles.loginButton} 
+          activeOpacity={0.8}
+          onPress={handleLogin}
+        >
           <Text style={styles.loginButtonText}>Log in</Text>
         </TouchableOpacity>
       </View>

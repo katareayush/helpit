@@ -6,13 +6,11 @@ const LoginAsScreen = () => {
   const router = useRouter();
 
   const handleCustomerSelection = () => {
-    // Navigate to the Welcome screen
     router.push('/Welcome_screen');
   };
 
   const handleProviderSelection = () => {
-    // Navigate to service provider login or directly to provider dashboard
-    router.push('/provider-login'); // Ensure this route exists in your app
+    router.push('/provider-login');
   };
 
   return (
