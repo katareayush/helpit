@@ -7,23 +7,33 @@ import {
   StyleSheet, 
   SafeAreaView,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router'; // Add this import
+import { useRouter } from 'expo-router';
 
 const SignInService = () => {
-  const router = useRouter(); // Use expo-router instead of navigation prop
+  const router = useRouter();
   const [phoneNumber, setPhoneNumber] = useState('');
   const [activeTab, setActiveTab] = useState('Driver');
 
   const handleGetOTP = () => {
+    if (!phoneNumber || phoneNumber.length < 10) {
+      Alert.alert('Invalid Input', 'Please enter a valid phone number');
+      return;
+    }
+    
     console.log('Requesting OTP for:', phoneNumber);
-    // OTP request logic would go here
+    // In a real app, you would make an API call here to request OTP
+    // For now, we'll simulate success and navigate directly
+    
+    // Navigate to the driver dashboard after OTP verification
+    router.push('/DriverDashboard');
   };
 
   const goBack = () => {
-    router.back(); // Use router.back() instead of navigation.goBack()
+    router.back();
   };
 
   return (
@@ -76,6 +86,7 @@ const SignInService = () => {
               value={phoneNumber}
               onChangeText={setPhoneNumber}
               keyboardType="phone-pad"
+              maxLength={15}
             />
           </View>
 
@@ -114,7 +125,7 @@ const styles = StyleSheet.create({
     marginBottom: 50,
   },
   logoText: {
-    fontSize: 35    ,
+    fontSize: 35,
     fontWeight: '500',
   },
   logoAccent: {

@@ -21,8 +21,21 @@ const SignInScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
 
   const handleSignIn = () => {
-    // Handle sign in logic here
-    console.log('Signing in with:', credentials);
+    // Add basic validation
+    if (!credentials.emailOrPhone || !credentials.password) {
+      // Show error if fields are empty
+      alert('Please fill in all fields');
+      return;
+    }
+
+    try {
+      // Here you would typically make an API call to validate credentials
+      // For now, we'll just navigate to DriverDashboard
+      router.push('/DriverDashboard');
+    } catch (error) {
+      console.error('Sign in error:', error);
+      alert('Failed to sign in. Please try again.');
+    }
   };
 
   const goBack = () => {
