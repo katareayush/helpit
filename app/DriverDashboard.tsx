@@ -54,9 +54,12 @@ const DriverDashboard = () => {
     <SafeAreaView style={styles.container}>
       {/* Top Header */}
       <View style={styles.topHeader}>
-        <View style={styles.avatarContainer}>
+        <TouchableOpacity 
+          style={styles.avatarContainer}
+          onPress={() => router.push('/ProfileScreen')} // Add navigation to ProfileScreen
+        >
           <Ionicons name="person-outline" size={24} color="white" />
-        </View>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
           <Text style={styles.editButtonText}>Driver</Text>
         </TouchableOpacity>
