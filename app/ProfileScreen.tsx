@@ -10,10 +10,16 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 const ProfileScreen = () => {
+  const router = useRouter();
   const [isAvailable, setIsAvailable] = React.useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = React.useState(true);
+
+  const handleBack = () => {
+    router.back();
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -21,7 +27,9 @@ const ProfileScreen = () => {
 
         {/* Header */}
         <View style={styles.headerRow}>
-          <Ionicons name="arrow-back" size={24} color="black" />
+          <TouchableOpacity onPress={handleBack}>
+            <Ionicons name="arrow-back" size={24} color="black" />
+          </TouchableOpacity>
           <Text style={styles.header}>Profile</Text>
           <Text style={styles.edit}>Edit</Text>
         </View>

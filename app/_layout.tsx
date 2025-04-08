@@ -45,6 +45,8 @@ export default function RootLayout() {
         <Stack.Screen name="signInC" options={{ headerShown: false }} />
         <Stack.Screen name="SignInService" options={{ headerShown: false }} />
         <Stack.Screen name="ProfileScreen" options={{ headerShown: false }} />
+        <Stack.Screen name="MyBookingScreen" options={{ headerShown: false }} />
+        <Stack.Screen name="PaymentsScreen" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />

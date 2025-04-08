@@ -21,8 +21,31 @@ const SignInScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
 
   const handleSignIn = () => {
-    // Handle sign in logic here
-    console.log('Signing in with:', credentials);
+    // Hardcoded credentials for testing
+    const validUser = {
+      email: 'test@example.com',
+      phone: '1234567890',
+      password: 'password123'
+    };
+
+    // Basic validation for empty fields
+    if (!credentials.emailOrPhone || !credentials.password) {
+      alert('Please fill in all fields');
+      return;
+    }
+
+    // Check if email/phone and password match
+    const isValidEmail = credentials.emailOrPhone === validUser.email;
+    const isValidPhone = credentials.emailOrPhone === validUser.phone;
+    const isValidPassword = credentials.password === validUser.password;
+
+    if ((isValidEmail || isValidPhone) && isValidPassword) {
+      // Successful login
+      router.push('/MyBookingScreen');
+    } else {
+      // Failed login
+      alert('Invalid email/phone or password');
+    }
   };
 
   const goBack = () => {
