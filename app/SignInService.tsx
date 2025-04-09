@@ -19,6 +19,7 @@ const SignInService = () => {
 
   const handleGetOTP = () => {
     console.log('Requesting OTP for:', phoneNumber);
+    router.push('/DriverDashboard');
     // OTP request logic would go here
   };
 
