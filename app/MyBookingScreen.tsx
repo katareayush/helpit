@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import CustomTabBar from '@/components/CustomTabBar';
 
 type TabType = 'Upcoming' | 'Completed' | 'Cancelled';
 
@@ -131,34 +132,7 @@ const MyBookingsScreen = () => {
         ListEmptyComponent={renderEmptyList}
       />
 
-      {/* Bottom Tab Bar */}
-      <View style={styles.bottomTabBar}>
-        <TouchableOpacity 
-          style={styles.tabBarItem}
-          onPress={() => router.push('/Home')}
-        >
-          <Ionicons name="home-outline" size={24} color="#888" />
-          <Text style={styles.tabBarItemText}>Home</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.tabBarItem, styles.activeTabBarItem]}>
-          <Ionicons name="calendar-outline" size={24} color="#FDA172" />
-          <Text style={styles.activeTabBarItemText}>Bookings</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.tabBarItem}
-          onPress={() => router.push('/PaymentsScreen')}
-        >
-          <Ionicons name="card-outline" size={24} color="#888" />
-          <Text style={styles.tabBarItemText}>Payments</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.tabBarItem}
-          
-        >
-          <Ionicons name="person-outline" size={24} color="#888" />
-          <Text style={styles.tabBarItemText}>Profile</Text>
-        </TouchableOpacity>
-      </View>
+      <CustomTabBar activeRoute="Bookings" />
     </SafeAreaView>
   );
 };
@@ -283,8 +257,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#fff',
     borderTopWidth: 1,
+    borderBottomWidth: 25,
     borderTopColor: '#eee',
-    height: 60,
+    height: 100,
     paddingBottom: 8,
   },
   tabBarItem: {

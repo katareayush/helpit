@@ -37,16 +37,20 @@ export default function RootLayout() {
             headerShown: false,
           }}
         />
-        <Stack.Screen name="Home" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="login-selection" options={{ headerShown: false }} />
-        <Stack.Screen name="Welcome_screen" options={{ headerShown: false }} />
-        <Stack.Screen name="SignupScreenC" options={{ headerShown: false }} />
-        <Stack.Screen name="signInC" options={{ headerShown: false }} />
-        <Stack.Screen name="SignInService" options={{ headerShown: false }} />
-        <Stack.Screen name="ProfileScreen" options={{ headerShown: false }} />
-        <Stack.Screen name="MyBookingScreen" options={{ headerShown: false }} />
-        <Stack.Screen name="PaymentsScreen" options={{ headerShown: false }} />
+         <Stack.Screen name="index" options={{ headerShown: false }} />
+         
+         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+         <Stack.Screen name="login-selection" options={{ headerShown: false }} />
+         <Stack.Screen name="Welcome_screen" options={{ headerShown: false }} />
+         <Stack.Screen name="SignupScreenC" options={{ headerShown: false }} />
+         <Stack.Screen name="signInC" options={{ headerShown: false }} />
+         <Stack.Screen name="SignInService" options={{ headerShown: false }} />
+         <Stack.Screen name="ProfileScreen" options={{ headerShown: false }} />
+         <Stack.Screen name="ProfileScreenCustomer" options={{ headerShown: false }}/>
+         <Stack.Screen name="PaymentsScreen" options={{ headerShown: false }} />
+         <Stack.Screen name="HomeScreen" options={{ headerShown: false }} /> 
+         <Stack.Screen name="MyBookingScreen" options={{ headerShown: false }} />
+        
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />
