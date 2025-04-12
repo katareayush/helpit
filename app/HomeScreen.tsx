@@ -22,14 +22,15 @@ import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import CustomTabBar from '../components/CustomTabBar';
+import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 const OFFER_ITEM_WIDTH = width * 0.8; // Fixed width for all cards
 const OFFER_ITEM_HEIGHT = 150; // Fixed height for all cards
 
-export default function HomeScreen() {
-  const [location, setLocation] = useState<string>('Fetching location...');
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+export default function HomeScreen({ navigation }) {
+  const [location, setLocation] = useState('Fetching location...');
+  const [errorMsg, setErrorMsg] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -60,24 +61,28 @@ export default function HomeScreen() {
       name: 'Driver Service',
       description: 'Professional drivers for your needs',
       image: 'https://via.placeholder.com/100',
+      screen: 'DriverServiceScreen'  // Matches the screen name in _layout.tsx
     },
     {
       id: 2,
       name: 'Home Cleaning',
       description: 'Professional home cleaning services',
       image: 'https://via.placeholder.com/100',
+      screen: 'CleaningServiceListScreen'  // Matches the screen name in _layout.tsx
     },
     {
       id: 3,
       name: 'Helper',
       description: 'Professional assistance for tasks',
       image: 'https://via.placeholder.com/100',
+      screen: 'HelperServiceScreen'  // Matches the screen name in _layout.tsx
     },
     {
       id: 4,
       name: 'Cook',
       description: 'Professional cooking services',
       image: 'https://via.placeholder.com/100',
+      screen: 'HelperServiceScreen'  // Changed from Home to HelperService as placeholder
     },
   ];
 
@@ -87,110 +92,166 @@ export default function HomeScreen() {
       title: '50% Off Your First Booking',
       subtitle: 'Use code: NEW50',
       buttonText: 'Claim Now',
-      bgColor: 'bg-purple-100',
-      buttonColor: 'bg-blue-500',
+      bgColor: '#F3E5F5', // Equivalent to bg-purple-100
+      buttonColor: '#3F51B5', // Equivalent to bg-blue-500
     },
     {
       id: 2,
       title: 'Hot Deals',
       subtitle: 'Check offers',
-      bgColor: 'bg-green-100',
+      bgColor: '#E8F5E9', // Equivalent to bg-green-100
     },
     {
       id: 3,
       title: '20% Off Cleaning',
       subtitle: 'Valid until April 20',
       buttonText: 'Claim',
-      bgColor: 'bg-yellow-100',
-      buttonColor: 'bg-amber-500',
+      bgColor: '#FFF8E1', // Equivalent to bg-yellow-100
+      buttonColor: '#FFB300', // Equivalent to bg-amber-500
     },
   ];
 
   const statusBarHeight = Constants.statusBarHeight;
 
-  const renderOfferItem = ({ item }: { item: typeof specialOffers[0] }) => (
+  const renderOfferItem = ({ item }) => (
     <View
-      className={`rounded-lg p-4 mr-4`}
       style={{
         width: OFFER_ITEM_WIDTH,
         height: OFFER_ITEM_HEIGHT,
         backgroundColor: item.bgColor,
+        borderRadius: 8,
+        padding: 16,
+        marginRight: 16,
       }}
     >
-      <Text className="font-bold text-lg text-gray-800">{item.title}</Text>
-      <Text className="text-gray-700 text-sm mt-2">{item.subtitle}</Text>
+      <Text style={{ fontWeight: 'bold', fontSize: 18, color: '#333' }}>{item.title}</Text>
+      <Text style={{ color: '#555', fontSize: 14, marginTop: 8 }}>{item.subtitle}</Text>
 
       {item.buttonText && (
         <TouchableOpacity
-          className="rounded-md mt-3 py-2 px-4 self-start"
-          style={{ backgroundColor: item.buttonColor }}
+          style={{
+            backgroundColor: item.buttonColor,
+            borderRadius: 6,
+            marginTop: 12,
+            paddingVertical: 8,
+            paddingHorizontal: 16,
+            alignSelf: 'flex-start',
+          }}
         >
-          <Text className="text-white text-xs font-medium">{item.buttonText}</Text>
+          <Text style={{ color: 'white', fontSize: 12, fontWeight: '500' }}>{item.buttonText}</Text>
         </TouchableOpacity>
       )}
     </View>
   );
 
+  // Handle service item click
+  const router = useRouter();
+  
+  const handleServicePress = (service) => {
+    router.push(service.screen);
+  };
+
   return (
     <>
       <StatusBar style="dark" />
-      <SafeAreaView className="flex-1 bg-gray-50">
-        <View className={`flex-1 bg-gray-50 ${Platform.OS === 'ios' ? '' : `pt-[${statusBarHeight}px]`}`}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#f9fafb' }}>
+        <View style={{ 
+          flex: 1, 
+          backgroundColor: '#f9fafb',
+          paddingTop: Platform.OS === 'ios' ? 0 : statusBarHeight 
+        }}>
           {/* Header */}
-          <View className="px-4 py-4 flex-row justify-between items-center">
+          <View style={{ 
+            paddingHorizontal: 16, 
+            paddingVertical: 16, 
+            flexDirection: 'row', 
+            justifyContent: 'space-between', 
+            alignItems: 'center' 
+          }}>
             <Menu size={28} color="#333" />
-            <Text className="font-bold text-2xl text-gray-800">
-              Help<Text className="text-orange-500">It</Text>
+            <Text style={{ fontWeight: 'bold', fontSize: 24, color: '#333' }}>
+              Help<Text style={{ color: '#f97316' }}>It</Text>
             </Text>
             <Bell size={28} color="#333" />
           </View>
 
           {/* Welcome Card */}
-          <View className="mx-4 mt-4 bg-orange-100 rounded-lg p-5">
-            <Text className="text-xl font-semibold text-gray-800">Hello, Aditya!</Text>
-            <Text className="text-gray-700 mt-2">
+          <View style={{ 
+            marginHorizontal: 16, 
+            marginTop: 16, 
+            backgroundColor: '#fff3e0', 
+            borderRadius: 8, 
+            padding: 20 
+          }}>
+            <Text style={{ fontSize: 20, fontWeight: '600', color: '#333' }}>Hello, Aditya!</Text>
+            <Text style={{ color: '#555', marginTop: 8 }}>
               What service do you need today?
             </Text>
 
-            <TouchableOpacity className="bg-white rounded-md px-4 py-3 mt-4 flex-row items-center justify-center">
-              <Text className="text-center font-medium text-gray-800">
+            <TouchableOpacity style={{ 
+              backgroundColor: 'white', 
+              borderRadius: 6, 
+              paddingHorizontal: 16, 
+              paddingVertical: 12, 
+              marginTop: 16, 
+              alignItems: 'center' 
+            }}>
+              <Text style={{ fontWeight: '500', color: '#333' }}>
                 Book a Service
               </Text>
             </TouchableOpacity>
           </View>
 
           {/* Location bar */}
-          <View className="mx-4 mt-5 flex-row items-center">
-            <Text className="text-gray-600 text-sm">Current Location: </Text>
-            <Text className="text-gray-800 font-medium text-sm">
+          <View style={{ 
+            marginHorizontal: 16, 
+            marginTop: 20, 
+            flexDirection: 'row', 
+            alignItems: 'center' 
+          }}>
+            <Text style={{ color: '#666', fontSize: 14 }}>Current Location: </Text>
+            <Text style={{ color: '#333', fontWeight: '500', fontSize: 14 }}>
               {errorMsg || location}
             </Text>
-            <MapPin size={16} color="#555" />
+            <MapPin size={16} color="#555" style={{ marginLeft: 4 }} />
           </View>
 
           {/* Search bar */}
-          <View className="mx-4 mt-3 bg-gray-100 rounded-lg flex-row items-center px-4 py-3">
+          <View style={{ 
+            marginHorizontal: 16, 
+            marginTop: 12, 
+            backgroundColor: '#f1f1f1', 
+            borderRadius: 8, 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            paddingHorizontal: 16, 
+            paddingVertical: 12 
+          }}>
             <Search size={20} color="#777" />
             <TextInput
               placeholder="Search for services"
-              className="flex-1 ml-2 text-gray-800"
+              style={{ flex: 1, marginLeft: 8, color: '#333' }}
             />
           </View>
 
           <ScrollView
-            className="flex-1 mt-5"
+            style={{ flex: 1, marginTop: 20 }}
             contentContainerStyle={{ paddingBottom: 80 }}
             showsVerticalScrollIndicator={false}
           >
             {/* Special Offers */}
-            <View className="px-4">
-              <View className="flex-row justify-between items-center">
-                <Text className="font-semibold text-lg text-gray-800">Special Offers</Text>
-                <Text className="text-blue-500 text-sm">View all</Text>
+            <View style={{ paddingHorizontal: 16 }}>
+              <View style={{ 
+                flexDirection: 'row', 
+                justifyContent: 'space-between', 
+                alignItems: 'center' 
+              }}>
+                <Text style={{ fontWeight: '600', fontSize: 18, color: '#333' }}>Special Offers</Text>
+                <Text style={{ color: '#3b82f6', fontSize: 14 }}>View all</Text>
               </View>
 
               {/* Special Offers Carousel */}
-              <View className="mt-4">
+              <View style={{ marginTop: 16 }}>
                 <FlatList
                   data={specialOffers}
                   renderItem={renderOfferItem}
@@ -205,46 +266,80 @@ export default function HomeScreen() {
             </View>
 
             {/* Services */}
-            <View className="mt-8 px-4">
-              <Text className="font-semibold text-lg text-gray-800">Services</Text>
+            <View style={{ marginTop: 32, paddingHorizontal: 16 }}>
+              <Text style={{ fontWeight: '600', fontSize: 18, color: '#333' }}>Services</Text>
 
-              <View className="flex-row flex-wrap justify-between mt-4">
+              <View style={{ 
+                flexDirection: 'row', 
+                flexWrap: 'wrap', 
+                justifyContent: 'space-between', 
+                marginTop: 16
+              }}>
                 {services.map((service) => (
-                  <View
+                  <TouchableOpacity
                     key={service.id}
-                    className="w-[48%] bg-white rounded-lg mb-5 overflow-hidden shadow-sm"
+                    style={{
+                      width: '48%',
+                      backgroundColor: 'white',
+                      borderRadius: 8,
+                      marginBottom: 20,
+                      overflow: 'hidden',
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: 0.1,
+                      shadowRadius: 2,
+                      elevation: 2,
+                    }}
+                    onPress={() => handleServicePress(service)}
                   >
                     <Image
                       source={{ uri: service.image }}
-                      className="w-full h-32"
+                      style={{ width: '100%', height: 128 }}
                       resizeMode="cover"
                     />
-                    <View className="p-3">
-                      <Text className="font-medium text-gray-800">
+                    <View style={{ padding: 12 }}>
+                      <Text style={{ fontWeight: '500', color: '#333' }}>
                         {service.name}
                       </Text>
-                      <Text className="text-gray-500 text-xs mt-1">
+                      <Text style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
                         {service.description}
                       </Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
 
             {/* Recent Bookings */}
-            <View className="mt-6 px-4 pb-20">
-              <View className="flex-row justify-between items-center">
-                <Text className="font-semibold text-lg text-gray-800">Recent Bookings</Text>
-                <Text className="text-blue-500 text-sm">View history</Text>
+            <View style={{ marginTop: 24, paddingHorizontal: 16, paddingBottom: 80 }}>
+              <View style={{ 
+                flexDirection: 'row', 
+                justifyContent: 'space-between', 
+                alignItems: 'center' 
+              }}>
+                <Text style={{ fontWeight: '600', fontSize: 18, color: '#333' }}>Recent Bookings</Text>
+                <Text style={{ color: '#3b82f6', fontSize: 14 }}>View history</Text>
               </View>
 
-              <View className="mt-4 items-center py-10 border border-gray-200 rounded-lg">
+              <View style={{ 
+                marginTop: 16, 
+                alignItems: 'center', 
+                paddingVertical: 40, 
+                borderWidth: 1, 
+                borderColor: '#e5e5e5', 
+                borderRadius: 8 
+              }}>
                 <Calendar size={40} color="#999" />
-                <Text className="mt-3 text-gray-500">No recent bookings found</Text>
+                <Text style={{ marginTop: 12, color: '#666' }}>No recent bookings found</Text>
 
-                <TouchableOpacity className="mt-5 bg-orange-100 rounded-md px-5 py-3">
-                  <Text className="font-medium text-gray-800">
+                <TouchableOpacity style={{ 
+                  marginTop: 20, 
+                  backgroundColor: '#fff3e0', 
+                  borderRadius: 6, 
+                  paddingHorizontal: 20, 
+                  paddingVertical: 12 
+                }}>
+                  <Text style={{ fontWeight: '500', color: '#333' }}>
                     Book Your First Service
                   </Text>
                 </TouchableOpacity>
@@ -254,7 +349,7 @@ export default function HomeScreen() {
         </View>
 
         {/* Bottom Navigation */}
-        <View className="absolute bottom-0 left-0 right-0">
+        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
           <CustomTabBar activeRoute="Home" />
         </View>
       </SafeAreaView>
