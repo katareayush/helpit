@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import CustomTabBar from '@/components/CustomTabBar';
 
 const PaymentsScreen = () => {
   const router = useRouter();
@@ -55,34 +56,7 @@ const PaymentsScreen = () => {
         </ScrollView>
       </View>
 
-      {/* Bottom Navigation */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => router.push('/Home')}
-        >
-          <Ionicons name="home-outline" size={24} color="#888" />
-          <Text style={styles.navText}>Home</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => router.push('/MyBookingScreen')}
-        >
-          <Ionicons name="calendar-outline" size={24} color="#888" />
-          <Text style={styles.navText}>Bookings</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.navItem, styles.activeNavItem]}>
-          <Ionicons name="card-outline" size={24} color="#FF8C00" />
-          <Text style={styles.activeNavText}>Payments</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => router.push('/ProfileScreen')}
-        >
-          <Ionicons name="person-outline" size={24} color="#888" />
-          <Text style={styles.navText}>Profile</Text>
-        </TouchableOpacity>
-      </View>
+      <CustomTabBar activeRoute="Payments" />
     </SafeAreaView>
   );
 };

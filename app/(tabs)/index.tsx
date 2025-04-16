@@ -1,18 +1,15 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, FlatList, Image, Dimensions, TouchableOpacity, StatusBar, StyleSheet } from 'react-native';
-import { useNavigation, NavigationProp, ParamListBase } from '@react-navigation/native';
+import { useRouter } from 'expo-router'; 
 import Svg, { Circle } from 'react-native-svg';
 
 const { width, height } = Dimensions.get('window');
 
-// Define the type for navigation
-type NavigationProps = NavigationProp<ParamListBase>;
-
 const OnboardingScreen = () => {
-  // Properly type the navigation object
-  const navigation = useNavigation<NavigationProps>();
+  // Use router instead of navigation
+  const router = useRouter();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef(null);
 
   const slides = [
     {
@@ -38,7 +35,7 @@ const OnboardingScreen = () => {
     },
   ];
 
-  const onViewableItemsChanged = ({ viewableItems }: { viewableItems: Array<{ index: number | null }> }) => {
+  const onViewableItemsChanged = ({ viewableItems }) => {
     if (viewableItems.length > 0 && viewableItems[0].index !== null) {
       setCurrentIndex(viewableItems[0].index);
     }
@@ -50,7 +47,11 @@ const OnboardingScreen = () => {
     if (currentIndex < slides.length - 1) {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
     } else {
-      navigation.navigate('login-selection');
+      // Use router to navigate directly with the path
+      router.push('/(auth)/login-selection');
+      
+      // If your route is nested deeper, you can use the full path:
+      // router.push('/auth/login-selection');
     }
   };
 
@@ -123,7 +124,7 @@ const OnboardingScreen = () => {
 };
 
 // SVG Circular progress component with adjusted start position to 12 o'clock
-const CircularProgress = ({ progress }: { progress: number }) => {
+const CircularProgress = ({ progress }) => {
   const size = 70;
   const strokeWidth = 2;
   const radius = (size - strokeWidth) / 2;
