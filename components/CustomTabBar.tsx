@@ -14,11 +14,11 @@ const CustomTabBar = () => {
         <Ionicons 
           name="home-outline" 
           size={24} 
-          color={currentRoute === 'Home' ? '#FDA172' : '#888'} 
+          color={currentRoute === 'HomeScreen' ? '#FDA172' : '#888'} 
         />
         <Text style={[
           styles.tabBarItemText,
-          currentRoute === 'Home' && styles.activeTabBarItemText
+          currentRoute === 'HomeScreen' && styles.activeTabBarItemText
         ]}>Home</Text>
       </TouchableOpacity>
 

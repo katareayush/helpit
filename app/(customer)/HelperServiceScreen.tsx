@@ -13,7 +13,7 @@ import {
 import { ArrowLeft, Search, Star, Clock, Calendar } from 'lucide-react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
-import CustomTabBar from '../components/CustomTabBar';
+import CustomTabBar from '../../components/CustomTabBar';
 
 export default function HelperServiceScreen() {
   const router = useRouter();

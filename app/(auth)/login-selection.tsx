@@ -10,7 +10,7 @@ const LoginAsScreen = () => {
   };
 
   const handleProviderSelection = () => {
-    router.push('/SignInService'); // Changed from '/' to '/SignInService'
+    router.push('/SignInService'); 
   };
 
   return (
@@ -26,7 +26,7 @@ const LoginAsScreen = () => {
           >
             <View style={styles.circleBackground}>
               <Image 
-                source={require('../assets/images/man.png')} 
+                source={require('../../assets/images/man.png')} 
                 style={styles.optionImage}
                 resizeMode="contain"
               />
@@ -40,7 +40,7 @@ const LoginAsScreen = () => {
           >
             <View style={styles.circleBackground}>
               <Image 
-                source={require('../assets/images/girl.png')} 
+                source={require('../../assets/images/girl.png')} 
                 style={styles.optionImage}
                 resizeMode="contain"
               />

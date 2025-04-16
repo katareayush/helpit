@@ -28,7 +28,7 @@ const Welcome_screen = () => {
       {/* Main content container with curved bottom */}
       <View style={styles.imageContainer}>
         <Image 
-          source={require('../assets/images/CR(CUST)MAID.png')} // Update path to single ../
+          source={require('../../assets/images/CR(CUST)MAID.png')} // Update path to single ../
           style={styles.image}
           resizeMode="cover"
         />

@@ -11,7 +11,7 @@ import {
 import { ArrowLeft, MoreVertical, Star } from 'lucide-react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
-import CustomTabBar from '../components/CustomTabBar';
+import CustomTabBar from '../../components/CustomTabBar';
 
 export default function CleaningServiceListScreen() {
   const router = useRouter();
