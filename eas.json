@@ -1,0 +1,33 @@
+{
+  "cli": {
+    "version": ">= 16.3.2",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://admin.thehelpit.com/api/v1"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://admin.thehelpit.com/api/v1"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://admin.thehelpit.com/api/v1"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

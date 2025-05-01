@@ -3,177 +3,117 @@ import {
   View, 
   Text, 
   TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
+  TouchableOpacity,
   SafeAreaView,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router'; // Add this import
+import { useRouter } from 'expo-router';
+import axios from 'axios';
+import { API_BASE_URL } from '@/lib/api';
 
 const SignInService = () => {
-  const router = useRouter(); // Use expo-router instead of navigation prop
+  const router = useRouter();
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [activeTab, setActiveTab] = useState('Driver');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleGetOTP = () => {
-    console.log('Requesting OTP for:', phoneNumber);
-    router.push('/DriverDashboard');
-    // OTP request logic would go here
+  const handleGetOTP = async () => {
+    if (!phoneNumber || phoneNumber.length < 10) {
+      Alert.alert('Invalid Phone Number', 'Please enter a valid phone number');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/auth/send-otp`, {
+        phoneNumber,
+      });
+
+      router.push({
+        pathname: '/VerifyOTP',
+        params: { phoneNumber }
+      });
+    } catch (error: any) {
+      console.error('OTP request error:', error);
+      let errorMessage = 'Failed to send OTP. Please try again.';
+      
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response?.status === 403) {
+        errorMessage = 'Service provider not found. Please contact the administrator.';
+      }
+      
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const goBack = () => {
-    router.back(); // Use router.back() instead of navigation.goBack()
+    router.back();
+  };
+
+  const handlePhoneNumberChange = (text: string) => {
+    const cleanedText = text.replace(/[^0-9]/g, '');
+    if (cleanedText.length <= 10) {
+      setPhoneNumber(cleanedText);
+    }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView className="flex-1 bg-white">
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoidingView}
+        className="flex-1"
       >
-        <View style={styles.header}>
-          <TouchableOpacity onPress={goBack} style={styles.backButton}>
+        <View className="px-4 pt-2.5">
+          <TouchableOpacity onPress={goBack} className="flex-row items-center">
             <Ionicons name="chevron-back" size={24} color="black" />
-            <Text style={styles.backText}>Back</Text>
+            <Text className="text-base ml-1">Back</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.logoContainer}>
-          <Text style={styles.logoText}>Help<Text style={styles.logoAccent}>it.</Text></Text>
+        <View className="items-center mt-20 mb-12">
+          <Text className="text-[35px] font-medium">
+            Help<Text className="text-[#FF9966]">it.</Text>
+          </Text>
         </View>
 
-        <View style={styles.formContainer}>
-          <Text style={styles.signInTitle}>Sign in</Text>
+        <View className="px-5">
+          <Text className="text-[23px] font-medium text-center mb-5">Sign in</Text>
           
-          <View style={styles.tabContainer}>
-            <TouchableOpacity 
-              style={[
-                styles.tab, 
-                activeTab === 'Driver' && styles.activeTab
-              ]}
-              onPress={() => setActiveTab('Driver')}
-            >
-              <Text style={styles.tabText}>Driver</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[
-                styles.tab, 
-                activeTab === 'Other Providers' && styles.activeTab
-              ]}
-              onPress={() => setActiveTab('Other Providers')}
-            >
-              <Text style={styles.tabText}>Other Providers</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.inputContainer}>
+          <View className="mb-5">
             <TextInput
-              style={styles.input}
+              className="h-[50px] border border-[#E0E0E0] rounded-lg px-4 text-base"
               placeholder="Phone Number"
               placeholderTextColor="#A0A0A0"
               value={phoneNumber}
-              onChangeText={setPhoneNumber}
+              onChangeText={handlePhoneNumberChange}
               keyboardType="phone-pad"
+              maxLength={10}
             />
           </View>
 
-          <TouchableOpacity onPress={handleGetOTP} style={styles.otpButton}>
-            <Text style={styles.otpButtonText}>Get OTP</Text>
+          <TouchableOpacity 
+            onPress={handleGetOTP} 
+            className={`rounded-lg h-[50px] justify-center items-center mb-4 ${isLoading ? 'bg-[#FFCC99]' : 'bg-[#FF9966]'}`}
+            disabled={isLoading}
+          >
+            <Text className="text-white text-base font-semibold">
+              {isLoading ? 'Sending...' : 'Get OTP'}
+            </Text>
           </TouchableOpacity>
+          
+          <Text className="text-center text-[#666666] text-sm mt-5">
+            Note: Only service providers registered by the administrator can login.
+          </Text>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-  },
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  backText: {
-    fontSize: 16,
-    marginLeft: 4,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    marginTop: 80,
-    marginBottom: 50,
-  },
-  logoText: {
-    fontSize: 35    ,
-    fontWeight: '500',
-  },
-  logoAccent: {
-    color: '#FF9966',
-  },
-  formContainer: {
-    paddingHorizontal: 20,
-  },
-  signInTitle: {
-    fontSize: 23,
-    fontWeight: '500',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    marginBottom: 30,
-    borderRadius: 8,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#EEEEEE',
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  activeTab: {
-    backgroundColor: '#FFCC99',
-  },
-  tabText: {
-    fontWeight: '500',
-  },
-  inputContainer: {
-    marginBottom: 20,
-  },
-  input: {
-    height: 50,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    fontSize: 16,
-  },
-  otpButton: {
-    backgroundColor: '#FF9966',
-    borderRadius: 8,
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  otpButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});
 
 export default SignInService;

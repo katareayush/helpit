@@ -33,15 +33,26 @@ const OFFER_ITEM_WIDTH = width * 0.8; // Fixed width for all cards
 const OFFER_ITEM_HEIGHT = 150; // Fixed height for all cards
 
 // API base URL - update with your actual base URL
-const apiUrl = process.env.EXPO_PUBLIC_API_BASE_URL ;
+const apiUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
 
 // Type definitions
+interface ApiService {
+  _id: string;
+  name: string;
+  baseCharge: number;
+  unitType: string;
+  commissionPercentage: number;
+  serviceImage?: string;
+  isActive: boolean;
+  description?: string;
+}
+
 interface Service {
-  id: number;
+  id: string;
   name: string;
   description: string;
   image: string;
-  screen: string;
+  isDriver: boolean;
 }
 
 interface Offer {
@@ -77,39 +88,21 @@ export default function HomeScreen(): JSX.Element {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filteredServices, setFilteredServices] = useState<Service[]>([]);
+  const [allServices, setAllServices] = useState<Service[]>([]);
   const router = useRouter();
 
-  // Original services data
-  const allServices: Service[] = [
-    {
-      id: 1,
-      name: 'Driver Service',
-      description: 'Professional drivers for your needs',
-      image: 'https://via.placeholder.com/100',
-      screen: 'DriverServiceScreen'
-    },
-    {
-      id: 2,
-      name: 'Home Cleaning',
-      description: 'Professional home cleaning services',
-      image: 'https://via.placeholder.com/100',
-      screen: 'CleaningServiceListScreen'
-    },
-    {
-      id: 3,
-      name: 'Helper',
-      description: 'Professional assistance for tasks',
-      image: 'https://via.placeholder.com/100',
-      screen: 'HelperServiceScreen'
-    },
-    {
-      id: 4,
-      name: 'Cook',
-      description: 'Professional cooking services',
-      image: 'https://via.placeholder.com/100',
-      screen: 'HelperServiceScreen'
-    },
-  ];
+  // Format service name (remove underscores and capitalize)
+  const formatServiceName = (name: string): string => {
+    if (!name) return 'Service';
+    
+    // Replace underscores with spaces
+    const withSpaces = name.replace(/_/g, ' ');
+    
+    // Capitalize each word
+    return withSpaces.split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  };
 
   const specialOffers: Offer[] = [
     {
@@ -136,10 +129,111 @@ export default function HomeScreen(): JSX.Element {
     },
   ];
 
+  // Fetch services from API
+  const fetchServices = async (): Promise<void> => {
+    try {
+      const response = await axios.get(`${apiUrl}/services`);
+      
+      if (response.data?.success) {
+        const apiServices: ApiService[] = response.data.data || [];
+        
+        // Map API services to our Service interface
+        const mappedServices: Service[] = apiServices.map((service: ApiService) => {
+          // Check if service is driver service
+          const isDriverService = service.name.toLowerCase().includes('driver') || 
+                                 service.name.toLowerCase().includes('driving');
+          
+          return {
+            id: service._id,
+            name: formatServiceName(service.name),
+            description: service.description || `Professional ${service.name.toLowerCase()} services`,
+            image: service.serviceImage || 'https://via.placeholder.com/100',
+            isDriver: isDriverService
+          };
+        });
+        
+        setAllServices(mappedServices);
+        setFilteredServices(mappedServices);
+      } else {
+        // Fallback to hardcoded services if API fails
+        const fallbackServices: Service[] = [
+          {
+            id: '1',
+            name: 'Driver Service',
+            description: 'Professional drivers for your needs',
+            image: 'https://via.placeholder.com/100',
+            isDriver: true
+          },
+          {
+            id: '2',
+            name: 'Home Cleaning',
+            description: 'Professional home cleaning services',
+            image: 'https://via.placeholder.com/100',
+            isDriver: false
+          },
+          {
+            id: '3',
+            name: 'Helper',
+            description: 'Professional assistance for tasks',
+            image: 'https://via.placeholder.com/100',
+            isDriver: false
+          },
+          {
+            id: '4',
+            name: 'Cook',
+            description: 'Professional cooking services',
+            image: 'https://via.placeholder.com/100',
+            isDriver: false
+          },
+        ];
+        
+        setAllServices(fallbackServices);
+        setFilteredServices(fallbackServices);
+      }
+    } catch (error) {
+      console.error('Error fetching services:', error);
+      
+      // Use hardcoded services as fallback
+      const fallbackServices: Service[] = [
+        {
+          id: '1',
+          name: 'Driver Service',
+          description: 'Professional drivers for your needs',
+          image: 'https://via.placeholder.com/100',
+          isDriver: true
+        },
+        {
+          id: '2',
+          name: 'Home Cleaning',
+          description: 'Professional home cleaning services',
+          image: 'https://via.placeholder.com/100',
+          isDriver: false
+        },
+        {
+          id: '3',
+          name: 'Helper',
+          description: 'Professional assistance for tasks',
+          image: 'https://via.placeholder.com/100',
+          isDriver: false
+        },
+        {
+          id: '4',
+          name: 'Cook',
+          description: 'Professional cooking services',
+          image: 'https://via.placeholder.com/100',
+          isDriver: false
+        },
+      ];
+      
+      setAllServices(fallbackServices);
+      setFilteredServices(fallbackServices);
+    }
+  };
+
   // Fetch user data on component mount
   useEffect(() => {
     fetchUserData();
-    setFilteredServices(allServices);
+    fetchServices();
   }, []);
 
   // Get location
@@ -261,14 +355,22 @@ export default function HomeScreen(): JSX.Element {
     </View>
   );
 
-  // Handle service item click
   const handleServicePress = (service: Service): void => {
-    router.push(service.screen);
+    if (service.isDriver) {
+      router.push('DriverServiceScreen');
+    } else {
+      router.push({
+        pathname: 'ServiceProviderScreen',
+        params: { serviceId: service.id, serviceName: service.name }
+      });
+    }
   };
 
   const handleBookService = (): void => {
-    // Navigate to service selection or most popular service
-    router.push(allServices[0].screen);
+    // Navigate to the first service in the list
+    if (allServices.length > 0) {
+      handleServicePress(allServices[0]);
+    }
   };
 
   if (isLoading) {

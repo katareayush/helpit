@@ -1,39 +1,37 @@
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { View, ActivityIndicator, Text } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContext } from '../_layout';
 
-// Layout for service provider protected routes
 export default function ServiceProviderLayout() {
   const { isAuthenticated, userRole, setAuthState } = useContext(AuthContext);
   const router = useRouter();
-  const [isLoading, setIsLoading] = React.useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Verify service provider authentication and role
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        setIsLoading(true);
         const token = await AsyncStorage.getItem('accessToken');
         const storedRole = await AsyncStorage.getItem('userRole');
         
-        setIsLoading(true);
+        console.log('ServiceProviderLayout auth check:', { hasToken: !!token, storedRole });
         
         if (!token || storedRole !== 'service') {
-          // Not authenticated or wrong role, redirect to login
+          console.log('Auth failed in service layout, redirecting to sign in');
+          
+          await AsyncStorage.multiRemove(['accessToken', 'userRole', 'userData']);
+          
           setAuthState(false, '');
+          
           router.replace('/SignInService');
           return;
         }
         
-        // Check token validity if needed
-        // This would be a good place to verify with your backend
-        // that the token is still valid
-        
-        // Set auth state
         setAuthState(true, 'service');
       } catch (error) {
-        console.error('Auth check error:', error);
+        console.error('Auth check error in service layout:', error);
         router.replace('/SignInService');
       } finally {
         setIsLoading(false);
@@ -52,16 +50,16 @@ export default function ServiceProviderLayout() {
     );
   }
 
-  // If not authenticated or wrong role, don't render anything
-  // The redirection will happen in the useEffect
   if (!isAuthenticated || userRole !== 'service') {
     return null;
   }
 
+  // Your existing Stack component here
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="ProfileScreen" />
-      <Stack.Screen name="DriverDashboard" />
+      <Stack.Screen name="Dashboard" />
     </Stack>
   );
 }
+

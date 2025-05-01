@@ -59,9 +59,10 @@ export default function CustomerLayout() {
       <Stack.Screen name="MyBookingScreen" />
       <Stack.Screen name="PaymentsScreen" />
       <Stack.Screen name="DriverServiceScreen" />
-      <Stack.Screen name="CleaningServiceListScreen" />
-      <Stack.Screen name="CleaningServiceBookingScreen" />
+      <Stack.Screen name="ServiceProviderScreen" />
       <Stack.Screen name="HelperServiceScreen" />
+      <Stack.Screen name="CookServiceScreen" />
+      <Stack.Screen name="BookingScreen" />
     </Stack>
   );
 }

@@ -255,11 +255,7 @@ const ProfileScreenCustomer = () => {
   };
 
   const handleLogout = async () => {
-    try {
-      // Clear all tokens and user data from AsyncStorage
-      await AsyncStorage.removeItem('accessToken');
-      await AsyncStorage.removeItem('userData');
-      
+    try {      
       // Clear any other auth-related data
       await AsyncStorage.multiRemove([
         'accessToken', 
@@ -273,7 +269,7 @@ const ProfileScreenCustomer = () => {
       axios.defaults.headers.common['Authorization'] = '';
       
       // Navigate to login screen with the correct path structure
-      router.replace('/signInC');
+      router.replace('/');
     } catch (error) {
       console.error('Error during logout:', error);
       Alert.alert('Logout Failed', 'Please try again');

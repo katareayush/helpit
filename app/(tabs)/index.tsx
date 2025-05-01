@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { View, Text, FlatList, Image, Dimensions, TouchableOpacity, StatusBar, StyleSheet } from 'react-native';
+import { View, Text, FlatList, Image, Dimensions, TouchableOpacity, StatusBar, StyleSheet, Platform } from 'react-native';
 import { useRouter } from 'expo-router'; 
 import Svg, { Circle } from 'react-native-svg';
 
@@ -48,11 +48,7 @@ const OnboardingScreen = () => {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
     } else {
       // Use router to navigate directly with the path
-      router.push('/(auth)/login-selection');
-      
-      // If your route is nested deeper, you can use the full path:
-      // router.push('/auth/login-selection');
-    }
+      router.replace('/(auth)/login-selection');    }
   };
 
   const getButtonText = () => {
@@ -116,6 +112,11 @@ const OnboardingScreen = () => {
                 </View>
               </View>
             </View>
+            
+            {/* Android-specific fix: Extra white view at bottom to eliminate margin */}
+            {Platform.OS === 'android' && (
+              <View style={styles.androidBottomFix} />
+            )}
           </View>
         )}
       />
@@ -194,6 +195,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 20,
   },
+  // Android-specific bottom fix - extra white view to eliminate margin
+  androidBottomFix: {
+    position: 'absolute',
+    bottom: -55, // Extend beyond the bottom of the screen
+    left: 0,
+    right: 0,
+    height: 100, // Make it tall enough to cover any gap
+    backgroundColor: '#fff',
+    zIndex: -1, // Position behind other elements
+  },
   contentContainer: {
     width: '90%',
     alignItems: 'center',
@@ -251,8 +262,11 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 30, // Increased from 20 to 30
     fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 34, // Added line height to ensure vertical centering
+    paddingBottom: 2, // Small adjustment to visually center the arrow
   }
 });
 

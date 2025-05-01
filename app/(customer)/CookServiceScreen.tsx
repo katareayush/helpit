@@ -2,15 +2,15 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
+  Image,
   TouchableOpacity,
   SafeAreaView,
   FlatList,
-  Image,
   ActivityIndicator,
+  TextInput,
   ListRenderItem
 } from 'react-native';
-import { ArrowLeft, Search, Star, Clock, Calendar } from 'lucide-react-native';
+import { ArrowLeft, Clock, Star, Search } from 'lucide-react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import CustomTabBar from '../../components/CustomTabBar';
@@ -29,8 +29,6 @@ interface ServiceProvider {
     baseCharge: number;
     unitType: string;
   };
-  experience?: string;
-  availability?: string;
   rating?: number;
   reviews?: number;
 }
@@ -54,20 +52,12 @@ interface ApiResponse {
   };
 }
 
-interface ApiParams {
-  lat: number;
-  long: number;
-  limit: number;
-  page: number;
-  search?: string;
-}
-
-export default function HelperServiceScreen(): JSX.Element {
+export default function CookServiceScreen(): JSX.Element {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
-  const [helpers, setHelpers] = useState<ServiceProvider[]>([]);
-  const [filteredHelpers, setFilteredHelpers] = useState<ServiceProvider[]>([]);
+  const [cooks, setCooks] = useState<ServiceProvider[]>([]);
+  const [filteredCooks, setFilteredCooks] = useState<ServiceProvider[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState<number>(1);
   const [hasMore, setHasMore] = useState<boolean>(true);
@@ -107,10 +97,10 @@ export default function HelperServiceScreen(): JSX.Element {
     })();
   }, []);
 
-  // Fetch helpers when location is available
+  // Fetch cooks when location is available
   useEffect(() => {
     if (location) {
-      fetchHelpers(true);
+      fetchCooks(true);
     }
   }, [location]);
 
@@ -118,14 +108,14 @@ export default function HelperServiceScreen(): JSX.Element {
   useEffect(() => {
     const debounceTimeout = setTimeout(() => {
       if (location) {
-        fetchHelpers(true);
+        fetchCooks(true);
       }
     }, 500);
 
     return () => clearTimeout(debounceTimeout);
   }, [searchQuery]);
 
-  const fetchHelpers = async (isNewSearch = false): Promise<void> => {
+  const fetchCooks = async (isNewSearch = false): Promise<void> => {
     if (isNewSearch) {
       setPage(1);
       setHasMore(true);
@@ -138,8 +128,14 @@ export default function HelperServiceScreen(): JSX.Element {
       setLoading(isNewSearch ? true : loading);
       setRefreshing(isNewSearch);
       
-      // Prepare API parameters
-      const params: ApiParams = {
+      // Prepare API parameters - similar to HelperServiceScreen
+      const params: {
+        lat: number;
+        long: number;
+        limit: number;
+        page: number;
+        search?: string;
+      } = {
         lat: location.lat,
         long: location.long,
         limit: 10,
@@ -155,17 +151,17 @@ export default function HelperServiceScreen(): JSX.Element {
       const response = await axios.get(`${API_BASE_URL}/service-provider/search`, { params });
       
       if (response.data?.data) {
-        const responseData = response.data.data as ApiResponse['data'];
+        const responseData = response.data.data;
         const { serviceProviders, pagination } = responseData || { serviceProviders: [], pagination: { total: 0, page: 1, limit: 10, pages: 0 } };
         
         if (serviceProviders && Array.isArray(serviceProviders)) {
           if (isNewSearch) {
-            setHelpers(serviceProviders);
-            setFilteredHelpers(serviceProviders);
+            setCooks(serviceProviders);
+            setFilteredCooks(serviceProviders);
           } else {
             // Append new results for pagination
-            setHelpers(prev => [...prev, ...serviceProviders]);
-            setFilteredHelpers(prev => [...prev, ...serviceProviders]);
+            setCooks(prev => [...prev, ...serviceProviders]);
+            setFilteredCooks(prev => [...prev, ...serviceProviders]);
           }
           
           // Update pagination state
@@ -173,24 +169,24 @@ export default function HelperServiceScreen(): JSX.Element {
           setPage(prev => isNewSearch ? 2 : prev + 1);
         } else {
           if (isNewSearch) {
-            setHelpers([]);
-            setFilteredHelpers([]);
+            setCooks([]);
+            setFilteredCooks([]);
           }
           setHasMore(false);
         }
       } else {
         if (isNewSearch) {
-          setHelpers([]);
-          setFilteredHelpers([]);
+          setCooks([]);
+          setFilteredCooks([]);
         }
         setHasMore(false);
       }
     } catch (err) {
-      console.error('Error fetching helpers:', err);
-      setError('Failed to load helpers. Please try again later.');
+      console.error('Error fetching cooks:', err);
+      setError('Failed to load cooks. Please try again later.');
       if (isNewSearch) {
-        setHelpers([]);
-        setFilteredHelpers([]);
+        setCooks([]);
+        setFilteredCooks([]);
       }
     } finally {
       setLoading(false);
@@ -198,67 +194,74 @@ export default function HelperServiceScreen(): JSX.Element {
     }
   };
 
-  const handleSelectHelper = (helper: ServiceProvider): void => {
+  const handleSelectCook = (cook: ServiceProvider): void => {
     router.push({
-      pathname: 'HelperServiceBooking',
-      params: { helperId: helper._id }
+      pathname: 'CookServiceBooking',
+      params: { cookId: cook._id }
     });
   };
 
   const handleRefresh = (): void => {
-    fetchHelpers(true);
+    fetchCooks(true);
   };
 
   const handleLoadMore = (): void => {
     if (!loading && hasMore) {
-      fetchHelpers();
+      fetchCooks();
     }
   };
 
-  const renderHelperItem: ListRenderItem<ServiceProvider> = ({ item }) => {
+  const renderCookItem: ListRenderItem<ServiceProvider> = ({ item }) => {
     // Calculate price per hour from the service baseCharge
     const pricePerHour = item.serviceId?.baseCharge || 149;
     
     // Create display name if not available
-    const displayName = item.name || 'Professional Helper';
+    const displayName = item.name || 'Professional Cook';
     
-    // These would come from a real profile in a production app
-    const experience = item.experience || '3 years';
-    const availability = item.availability || 'Available today';
-    const rating = item.rating || 4.7;
-    const reviews = item.reviews || 78;
+    // Rating value
+    const rating = item.rating || 4.5;
     
     return (
       <TouchableOpacity
-        className="bg-white rounded-lg mb-4 p-4 flex-row shadow-sm"
-        onPress={() => handleSelectHelper(item)}
+        className="bg-white rounded-xl mb-4 p-4 flex-row shadow-sm"
+        onPress={() => handleSelectCook(item)}
       >
         <Image 
           source={{ 
-            uri: item.profilePicture || 'https://via.placeholder.com/100?text=Helper' 
+            uri: item.profilePicture || 'https://via.placeholder.com/100?text=Cook' 
           }} 
           className="w-20 h-20 rounded-full" 
         />
         <View className="flex-1 ml-4">
-          <Text className="text-base font-bold text-gray-900 mb-1">{displayName}</Text>
-          
-          <View className="flex-row items-center mb-1">
-            <Star size={14} color="#FFB900" fill="#FFB900" />
-            <Text className="text-sm text-gray-500 ml-1">{rating} ({reviews} reviews)</Text>
+          <View className="flex-row justify-between items-start">
+            <View>
+              <Text className="text-lg font-bold text-gray-900">{displayName}</Text>
+              <View className="flex-row items-center">
+                <Clock size={14} color="#666" />
+                <Text className="text-sm text-gray-600 ml-1">2+ years experience</Text>
+              </View>
+            </View>
+            <View className="flex-row items-center bg-amber-50 rounded-full px-2 py-1">
+              <Star size={16} color="#FFB900" fill="#FFB900" />
+              <Text className="text-sm font-bold text-amber-600 ml-1">{rating}</Text>
+            </View>
           </View>
           
-          <View className="flex-row items-center mb-1">
-            <Clock size={14} color="#666" />
-            <Text className="text-sm text-gray-600 ml-2">{experience} experience</Text>
+          <View className="mt-2">
+            <Text className="text-sm text-gray-500 mb-1">Specializations:</Text>
+            <View className="flex-row flex-wrap">
+              <View className="bg-blue-50 px-3 py-1 rounded-full mr-2 mb-1">
+                <Text className="text-xs text-blue-600 font-medium">North Indian</Text>
+              </View>
+              <View className="bg-blue-50 px-3 py-1 rounded-full mr-2 mb-1">
+                <Text className="text-xs text-blue-600 font-medium">South Indian</Text>
+              </View>
+            </View>
           </View>
           
-          <View className="flex-row items-center mb-2">
-            <Calendar size={14} color="#666" />
-            <Text className="text-sm text-gray-600 ml-2">{availability}</Text>
-          </View>
-          
-          <View className="bg-amber-50 rounded px-2 py-1 self-start">
-            <Text className="text-sm font-medium text-amber-600">₹{pricePerHour}/hour</Text>
+          <View className="mt-3 flex-row items-center bg-amber-50 rounded-md px-3 py-1 self-start">
+            <Text className="text-xs text-gray-600 mr-1">Starting from</Text>
+            <Text className="text-base font-bold text-amber-600">₹{pricePerHour}/hour</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -280,8 +283,8 @@ export default function HelperServiceScreen(): JSX.Element {
       <View className="flex-1 justify-center items-center p-5">
         <Text className="text-base text-gray-600 text-center">
           {searchQuery 
-            ? 'No helpers match your search criteria.' 
-            : 'No helpers available in your area at the moment.'}
+            ? 'No cooks match your search criteria.' 
+            : 'No cooks available in your area at the moment.'}
         </Text>
       </View>
     );
@@ -296,7 +299,7 @@ export default function HelperServiceScreen(): JSX.Element {
           <TouchableOpacity onPress={() => router.back()}>
             <ArrowLeft size={24} color="#000" />
           </TouchableOpacity>
-          <Text className="text-xl font-bold text-center flex-1 text-gray-900">Helper Services</Text>
+          <Text className="text-xl font-bold text-center flex-1 text-gray-900">Hire a Cook</Text>
           <View className="w-6" />
         </View>
 
@@ -306,7 +309,7 @@ export default function HelperServiceScreen(): JSX.Element {
             <Search size={20} color="#888" />
             <TextInput
               className="flex-1 ml-2 text-base"
-              placeholder="Search for helpers"
+              placeholder="Search for cooks"
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
@@ -316,10 +319,16 @@ export default function HelperServiceScreen(): JSX.Element {
           {locationPermission !== 'granted' && (
             <View className="mx-4 mt-4 p-3 bg-yellow-100 rounded-lg">
               <Text className="text-sm text-yellow-800">
-                Location access denied. Showing helpers for Mumbai area. Grant location permission for more accurate results.
+                Location access denied. Showing cooks for Mumbai area. Grant location permission for more accurate results.
               </Text>
             </View>
           )}
+          
+          {/* Service Type Header - keeping this from the original design */}
+          <View className="bg-white py-4 px-5 flex-row items-center mt-4">
+            <View className="w-1 h-5 bg-amber-500 mr-2 rounded" />
+            <Text className="text-lg font-bold text-gray-900">Professional Cooks Near You</Text>
+          </View>
           
           {/* Main Content */}
           {error ? (
@@ -334,8 +343,8 @@ export default function HelperServiceScreen(): JSX.Element {
             </View>
           ) : (
             <FlatList
-              data={filteredHelpers}
-              renderItem={renderHelperItem}
+              data={filteredCooks}
+              renderItem={renderCookItem}
               keyExtractor={(item) => item._id?.toString() || Math.random().toString()}
               contentContainerStyle={{ padding: 16, flexGrow: 1 }}
               onRefresh={handleRefresh}

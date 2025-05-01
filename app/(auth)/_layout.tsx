@@ -25,6 +25,7 @@ export default function AuthLayout() {
       <Stack.Screen name="SignupScreenC" options={{ headerShown: false }} />
       <Stack.Screen name="signInC" options={{ headerShown: false }} />
       <Stack.Screen name="SignInService" options={{ headerShown: false }} />
+      <Stack.Screen name="VerifyOTP" options={{ headerShown: false }} />
     </Stack>
   );
 }
