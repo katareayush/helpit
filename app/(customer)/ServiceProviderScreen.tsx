@@ -8,7 +8,9 @@ import {
   FlatList,
   ActivityIndicator,
   TextInput,
-  ListRenderItem
+  ListRenderItem,
+  Platform,
+  StatusBar as RNStatusBar
 } from 'react-native';
 import { ArrowLeft, Star, MoreVertical, Search } from 'lucide-react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -17,6 +19,8 @@ import CustomTabBar from '../../components/CustomTabBar';
 import axios from 'axios';
 import { API_BASE_URL } from '../../lib/api';
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 // Type definitions
 interface ServiceProvider {
@@ -76,11 +80,11 @@ interface ApiResponse {
 export default function ServiceProviderScreen(): JSX.Element {
   const router = useRouter();
   const params = useLocalSearchParams();
-  
+
   // Get serviceId and serviceName from params
   const serviceId = params.serviceId as string;
   const initialServiceName = params.serviceName as string || 'Service';
-  
+
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const [providers, setProviders] = useState<ServiceProvider[]>([]);
@@ -96,10 +100,10 @@ export default function ServiceProviderScreen(): JSX.Element {
   // Format service name (remove underscores and capitalize)
   function formatServiceName(name: string): string {
     if (!name) return 'Service';
-    
+
     // Replace underscores with spaces
     const withSpaces = name.replace(/_/g, ' ');
-    
+
     // Capitalize each word
     return withSpaces.split(' ')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -109,27 +113,47 @@ export default function ServiceProviderScreen(): JSX.Element {
   // Get location permissions when component mounts
   useEffect(() => {
     (async () => {
+      try {
+        const storedLocation = await AsyncStorage.getItem('@helpIt:location');
+
+        if (storedLocation) {
+          const parsedLocation = JSON.parse(storedLocation);
+          setLocation({
+            lat: parsedLocation.latitude,
+            long: parsedLocation.longitude
+          });
+          setLocationPermission('granted');
+          return;
+        }
+      } catch (error) {
+        console.error("Error retrieving stored location:", error);
+      }
+
       const { status } = await Location.requestForegroundPermissionsAsync();
       setLocationPermission(status);
-      
+
       if (status === 'granted') {
         try {
-          // Get the user's current position
           const currentLocation = await Location.getCurrentPositionAsync({});
-          setLocation({
+          const locationData = {
             lat: currentLocation.coords.latitude,
             long: currentLocation.coords.longitude
-          });
+          };
+          setLocation(locationData);
+
+          // Save to AsyncStorage for future use
+          await AsyncStorage.setItem('@helpIt:location', JSON.stringify({
+            latitude: currentLocation.coords.latitude,
+            longitude: currentLocation.coords.longitude
+          }));
         } catch (err) {
           console.error("Error getting location:", err);
-          // Use default location (Mumbai) if we can't get user's location
           setLocation({
             lat: 19.0760,
             long: 72.8777
           });
         }
       } else {
-        // Use default location if permission not granted
         setLocation({
           lat: 19.0760,
           long: 72.8777
@@ -161,14 +185,14 @@ export default function ServiceProviderScreen(): JSX.Element {
       setPage(1);
       setHasMore(true);
     }
-    
+
     if (!hasMore && !isNewSearch) return;
     if (!location) return;
 
     try {
       setLoading(isNewSearch ? true : loading);
       setRefreshing(isNewSearch);
-      
+
       // Prepare API parameters
       const params: {
         lat: number;
@@ -183,24 +207,24 @@ export default function ServiceProviderScreen(): JSX.Element {
         limit: 10,
         page: isNewSearch ? 1 : page
       };
-      
+
       // Add search query if provided
       if (searchQuery.trim() !== '') {
         params.search = searchQuery.trim();
       }
-      
+
       // Add serviceId if provided
       if (serviceId) {
         params.serviceId = serviceId;
       }
-      
+
       // Call the service-providers search endpoint
       const response = await axios.get(`${API_BASE_URL}/service-provider/search`, { params });
-      
+
       if (response.data?.data) {
         const responseData = response.data.data;
         const { serviceProviders, pagination } = responseData || { serviceProviders: [], pagination: { total: 0, page: 1, limit: 10, pages: 0 } };
-        
+
         if (serviceProviders && Array.isArray(serviceProviders)) {
           // Transform the data to match our expected interface
           const transformedProviders: ServiceProvider[] = serviceProviders.map(provider => {
@@ -212,7 +236,7 @@ export default function ServiceProviderScreen(): JSX.Element {
               rating: provider.rating,
               reviews: provider.reviews
             };
-            
+
             // Handle the serviceId property:
             // If provider has serviceIds array (from API), use the first service or match with requested serviceId
             if (Array.isArray(provider.serviceIds) && provider.serviceIds.length > 0) {
@@ -226,7 +250,7 @@ export default function ServiceProviderScreen(): JSX.Element {
                     baseCharge: matchedService.baseCharge,
                     unitType: matchedService.unitType
                   };
-                  
+
                   // Update service name from the first provider's matched service
                   if (isNewSearch && !serviceName && matchedService.name) {
                     setServiceName(formatServiceName(matchedService.name));
@@ -249,20 +273,20 @@ export default function ServiceProviderScreen(): JSX.Element {
                   unitType: provider.serviceIds[0].unitType
                 };
               }
-            } 
+            }
             // If provider already has a serviceId property, use it directly
             else if (provider.serviceId) {
               transformedProvider.serviceId = provider.serviceId;
-              
+
               // Update service name if not already set
               if (isNewSearch && !serviceName && provider.serviceId.name) {
                 setServiceName(formatServiceName(provider.serviceId.name));
               }
             }
-            
+
             return transformedProvider;
           });
-          
+
           if (isNewSearch) {
             setProviders(transformedProviders);
             setFilteredProviders(transformedProviders);
@@ -271,7 +295,7 @@ export default function ServiceProviderScreen(): JSX.Element {
             setProviders(prev => [...prev, ...transformedProviders]);
             setFilteredProviders(prev => [...prev, ...transformedProviders]);
           }
-          
+
           // Update pagination state
           setHasMore(pagination ? page < pagination.pages : false);
           setPage(prev => isNewSearch ? 2 : prev + 1);
@@ -308,10 +332,10 @@ export default function ServiceProviderScreen(): JSX.Element {
       console.error('No service ID available for this provider');
       return;
     }
-    
+
     router.push({
       pathname: 'BookingScreen',
-      params: { 
+      params: {
         cleanerId: provider._id,
         serviceId: provider.serviceId._id
       }
@@ -332,24 +356,24 @@ export default function ServiceProviderScreen(): JSX.Element {
     // Get the price from the service baseCharge
     const price = item.serviceId?.baseCharge || 149;
     const unitType = item.serviceId?.unitType || 'HOUR';
-    
+
     // Create display name if not available
     const displayName = item.name || `Professional ${serviceName} Provider`;
-    
+
     // Calculate rating
     const rating = item.rating || 4.8;
     const reviews = item.reviews || 87;
-    
+
     return (
       <TouchableOpacity
         className="bg-white rounded-lg mb-4 p-3 flex-row items-center"
         onPress={() => handleSelectProvider(item)}
       >
-        <Image 
-          source={{ 
-            uri: item.profilePicture || 'https://via.placeholder.com/100?text=Provider' 
-          }} 
-          className="w-20 h-20 rounded-lg" 
+        <Image
+          source={{
+            uri: item.profilePicture || 'https://via.placeholder.com/100?text=Provider'
+          }}
+          className="w-20 h-20 rounded-lg"
         />
         <View className="flex-1 ml-4">
           <View className="flex-row items-center mb-1">
@@ -385,8 +409,8 @@ export default function ServiceProviderScreen(): JSX.Element {
     return (
       <View className="flex-1 justify-center items-center p-5">
         <Text className="text-base text-gray-600 text-center">
-          {searchQuery 
-            ? `No ${serviceName.toLowerCase()} providers match your search criteria.` 
+          {searchQuery
+            ? `No ${serviceName.toLowerCase()} providers match your search criteria.`
             : `No ${serviceName.toLowerCase()} providers available in your area at the moment.`}
         </Text>
       </View>
@@ -401,13 +425,17 @@ export default function ServiceProviderScreen(): JSX.Element {
   return (
     <>
       <StatusBar style="dark" />
-      <SafeAreaView className="flex-1 bg-white">
+      <SafeAreaView className="flex-1 bg-white" style={{
+          paddingTop: Platform.OS === 'android' ? RNStatusBar.currentHeight : 0
+        }}>
         {/* Header */}
         <View className="flex-row items-center justify-between px-5 py-4 border-b border-gray-100">
           <TouchableOpacity onPress={() => router.back()}>
             <ArrowLeft size={24} color="#000" />
           </TouchableOpacity>
-          <Text className="text-xl font-bold text-center flex-1">Select {serviceName} Provider</Text>
+          <Text className="text-xl font-bold text-center flex-1">
+            {`Select ${serviceName} Provider`}
+          </Text>
           <View className="w-6" />
         </View>
 
@@ -422,7 +450,7 @@ export default function ServiceProviderScreen(): JSX.Element {
               onChangeText={setSearchQuery}
             />
           </View>
-          
+
           {/* Location Permission Warning */}
           {locationPermission !== 'granted' && (
             <View className="mx-4 mt-4 p-3 bg-yellow-100 rounded-lg">
@@ -431,13 +459,13 @@ export default function ServiceProviderScreen(): JSX.Element {
               </Text>
             </View>
           )}
-          
+
           {/* Main Content */}
           {error ? (
             <View className="flex-1 justify-center items-center p-5">
               <Text className="text-base text-red-500 text-center mb-5">{error}</Text>
-              <TouchableOpacity 
-                className="bg-amber-500 px-5 py-2 rounded-lg" 
+              <TouchableOpacity
+                className="bg-amber-500 px-5 py-2 rounded-lg"
                 onPress={handleRefresh}
               >
                 <Text className="text-white font-bold">Retry</Text>

@@ -94,139 +94,121 @@ export default function HomeScreen(): JSX.Element {
   // Format service name (remove underscores and capitalize)
   const formatServiceName = (name: string): string => {
     if (!name) return 'Service';
-    
+
     // Replace underscores with spaces
     const withSpaces = name.replace(/_/g, ' ');
-    
+
     // Capitalize each word
     return withSpaces.split(' ')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
   };
 
-  const specialOffers: Offer[] = [
-    {
-      id: 1,
-      title: '50% Off Your First Booking',
-      subtitle: 'Use code: NEW50',
-      buttonText: 'Claim Now',
-      bgColor: '#F3E5F5',
-      buttonColor: '#3F51B5',
-    },
-    {
-      id: 2,
-      title: 'Hot Deals',
-      subtitle: 'Check offers',
-      bgColor: '#E8F5E9',
-    },
-    {
-      id: 3,
-      title: '20% Off Cleaning',
-      subtitle: 'Valid until April 20',
-      buttonText: 'Claim',
-      bgColor: '#FFF8E1',
-      buttonColor: '#FFB300',
-    },
-  ];
+  // const specialOffers: Offer[] = [
+  //   {
+  //     id: 1,
+  //     title: '50% Off Your First Booking',
+  //     subtitle: 'Use code: NEW50',
+  //     buttonText: 'Claim Now',
+  //     bgColor: '#F3E5F5',
+  //     buttonColor: '#3F51B5',
+  //   },
+  //   {
+  //     id: 2,
+  //     title: 'Hot Deals',
+  //     subtitle: 'Check offers',
+  //     bgColor: '#E8F5E9',
+  //   },
+  //   {
+  //     id: 3,
+  //     title: '20% Off Cleaning',
+  //     subtitle: 'Valid until April 20',
+  //     buttonText: 'Claim',
+  //     bgColor: '#FFF8E1',
+  //     buttonColor: '#FFB300',
+  //   },
+  // ];
 
   // Fetch services from API
   const fetchServices = async (): Promise<void> => {
     try {
-      const response = await axios.get(`${apiUrl}/services`);
+      setIsLoading(true);
       
-      if (response.data?.success) {
-        const apiServices: ApiService[] = response.data.data || [];
+      const servicesResponse = await axios.get(`${apiUrl}/services`);
+      
+      if (servicesResponse.data?.success) {
+        const apiServices: ApiService[] = servicesResponse.data.data || [];
         
-        // Map API services to our Service interface
-        const mappedServices: Service[] = apiServices.map((service: ApiService) => {
-          // Check if service is driver service
-          const isDriverService = service.name.toLowerCase().includes('driver') || 
-                                 service.name.toLowerCase().includes('driving');
+        const availableServiceIds = new Set();
+        
+        const token = await AsyncStorage.getItem('accessToken');
+        
+        if (token) {
+          let userLat, userLong;
           
-          return {
-            id: service._id,
-            name: formatServiceName(service.name),
-            description: service.description || `Professional ${service.name.toLowerCase()} services`,
-            image: service.serviceImage || 'https://via.placeholder.com/100',
-            isDriver: isDriverService
-          };
-        });
+          const storedLocation = await AsyncStorage.getItem('@helpIt:location');
+          if (storedLocation) {
+            const parsedLocation = JSON.parse(storedLocation);
+            userLat = parsedLocation.latitude;
+            userLong = parsedLocation.longitude;
+          } else if (location && !location.includes('Fetching')) {
+            const currentLocation = await Location.getCurrentPositionAsync({});
+            userLat = currentLocation.coords.latitude;
+            userLong = currentLocation.coords.longitude;
+          }
+          
+          if (userLat && userLong) {
+            const providersResponse = await axios.get(
+              `${apiUrl}/service-provider/search`, 
+              { 
+                params: { lat: userLat, long: userLong, limit: 50 },
+                headers: { Authorization: `Bearer ${token}` }
+              }
+            );
+            
+            if (providersResponse.data?.success && 
+                providersResponse.data.data?.serviceProviders) {
+              const providers = providersResponse.data.data.serviceProviders;
+              
+              providers.forEach(provider => {
+                if (provider.serviceIds && Array.isArray(provider.serviceIds)) {
+                  provider.serviceIds.forEach(service => {
+                    if (service && service._id) {
+                      availableServiceIds.add(service._id);
+                    }
+                  });
+                }
+              });
+            }
+          }
+        }
+        
+        const mappedServices: Service[] = apiServices
+          .filter(service => availableServiceIds.has(service._id))
+          .map((service: ApiService) => {
+            const isDriverService = service.name.toLowerCase().includes('driver') || 
+                                    service.name.toLowerCase().includes('driving');
+            
+            return {
+              id: service._id,
+              name: formatServiceName(service.name),
+              description: service.description || `Professional ${service.name.toLowerCase()} services`,
+              image: service.serviceImage || 'https://via.placeholder.com/100',
+              isDriver: isDriverService
+            };
+          });
         
         setAllServices(mappedServices);
         setFilteredServices(mappedServices);
-      } else {
-        // Fallback to hardcoded services if API fails
-        const fallbackServices: Service[] = [
-          {
-            id: '1',
-            name: 'Driver Service',
-            description: 'Professional drivers for your needs',
-            image: 'https://via.placeholder.com/100',
-            isDriver: true
-          },
-          {
-            id: '2',
-            name: 'Home Cleaning',
-            description: 'Professional home cleaning services',
-            image: 'https://via.placeholder.com/100',
-            isDriver: false
-          },
-          {
-            id: '3',
-            name: 'Helper',
-            description: 'Professional assistance for tasks',
-            image: 'https://via.placeholder.com/100',
-            isDriver: false
-          },
-          {
-            id: '4',
-            name: 'Cook',
-            description: 'Professional cooking services',
-            image: 'https://via.placeholder.com/100',
-            isDriver: false
-          },
-        ];
-        
-        setAllServices(fallbackServices);
-        setFilteredServices(fallbackServices);
       }
     } catch (error) {
       console.error('Error fetching services:', error);
       
-      // Use hardcoded services as fallback
-      const fallbackServices: Service[] = [
-        {
-          id: '1',
-          name: 'Driver Service',
-          description: 'Professional drivers for your needs',
-          image: 'https://via.placeholder.com/100',
-          isDriver: true
-        },
-        {
-          id: '2',
-          name: 'Home Cleaning',
-          description: 'Professional home cleaning services',
-          image: 'https://via.placeholder.com/100',
-          isDriver: false
-        },
-        {
-          id: '3',
-          name: 'Helper',
-          description: 'Professional assistance for tasks',
-          image: 'https://via.placeholder.com/100',
-          isDriver: false
-        },
-        {
-          id: '4',
-          name: 'Cook',
-          description: 'Professional cooking services',
-          image: 'https://via.placeholder.com/100',
-          isDriver: false
-        },
-      ];
-      
-      setAllServices(fallbackServices);
-      setFilteredServices(fallbackServices);
+      // No fallback, just show empty state
+      setAllServices([]);
+      setFilteredServices([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -252,9 +234,19 @@ export default function HomeScreen(): JSX.Element {
           longitude: loc.coords.longitude,
         });
 
+        // Save location to AsyncStorage for other screens to use
+        const locationData = {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude
+        };
+        await AsyncStorage.setItem('@helpIt:location', JSON.stringify(locationData));
+
         if (address.length > 0) {
           const { city, region } = address[0];
-          setLocation(`${city || ''}, ${region || ''}`);
+          const locationString = `${city || ''}, ${region || ''}`;
+          setLocation(locationString);
+
+          await AsyncStorage.setItem('@helpIt:locationString', locationString);
         } else {
           setLocation('Location not found');
         }
@@ -270,20 +262,20 @@ export default function HomeScreen(): JSX.Element {
     try {
       // Get the stored token
       const token = await AsyncStorage.getItem('accessToken');
-      
+
       if (!token) {
         // If no token, redirect to login
         router.replace('/signInC');
         return;
       }
-      
+
       // Set up request with token
       const response = await axios.get(`${apiUrl}/user/self-identification`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       if (response.data && response.data.success) {
         setUserData(response.data.data);
       } else {
@@ -291,7 +283,7 @@ export default function HomeScreen(): JSX.Element {
       }
     } catch (error: any) {
       console.error('Error fetching user data:', error);
-      
+
       if (error.response && error.response.status === 401) {
         // Token expired or invalid
         Alert.alert('Session Expired', 'Please login again');
@@ -308,17 +300,17 @@ export default function HomeScreen(): JSX.Element {
   // Handle search functionality
   const handleSearch = (text: string): void => {
     setSearchQuery(text);
-    
+
     if (text.trim() === '') {
       setFilteredServices(allServices);
       return;
     }
-    
-    const filtered = allServices.filter(service => 
+
+    const filtered = allServices.filter(service =>
       service.name.toLowerCase().includes(text.toLowerCase()) ||
       service.description.toLowerCase().includes(text.toLowerCase())
     );
-    
+
     setFilteredServices(filtered);
   };
 
@@ -386,33 +378,31 @@ export default function HomeScreen(): JSX.Element {
     <>
       <StatusBar style="dark" />
       <SafeAreaView style={{ flex: 1, backgroundColor: '#f9fafb' }}>
-        <View style={{ 
-          flex: 1, 
+        <View style={{
+          flex: 1,
           backgroundColor: '#f9fafb',
-          paddingTop: Platform.OS === 'ios' ? 0 : statusBarHeight 
+          paddingTop: Platform.OS === 'ios' ? 0 : statusBarHeight
         }}>
           {/* Header */}
-          <View style={{ 
-            paddingHorizontal: 16, 
-            paddingVertical: 16, 
-            flexDirection: 'row', 
-            justifyContent: 'space-between', 
-            alignItems: 'center' 
+          <View style={{
+            paddingHorizontal: 16,
+            paddingVertical: 16,
+            flexDirection: 'row',
+            justifyContent: 'center', // Center horizontally
+            alignItems: 'center' // Center vertically
           }}>
-            <Menu size={28} color="#333" />
-            <Text style={{ fontWeight: 'bold', fontSize: 24, color: '#333' }}>
+            <Text style={{ fontWeight: 'bold', fontSize: 24, color: '#333', alignItems: 'center' }}>
               Help<Text style={{ color: '#f97316' }}>It</Text>
             </Text>
-            <Bell size={28} color="#333" />
           </View>
 
           {/* Welcome Card */}
-          <View style={{ 
-            marginHorizontal: 16, 
-            marginTop: 16, 
-            backgroundColor: '#fff3e0', 
-            borderRadius: 8, 
-            padding: 20 
+          <View style={{
+            marginHorizontal: 16,
+            marginTop: 16,
+            backgroundColor: '#fff3e0',
+            borderRadius: 8,
+            padding: 20
           }}>
             <Text style={{ fontSize: 20, fontWeight: '600', color: '#333' }}>
               Hello, {userData?.name?.split(' ')[0] || 'User'}!
@@ -421,14 +411,14 @@ export default function HomeScreen(): JSX.Element {
               What service do you need today?
             </Text>
 
-            <TouchableOpacity 
-              style={{ 
-                backgroundColor: 'white', 
-                borderRadius: 6, 
-                paddingHorizontal: 16, 
-                paddingVertical: 12, 
-                marginTop: 16, 
-                alignItems: 'center' 
+            <TouchableOpacity
+              style={{
+                backgroundColor: 'white',
+                borderRadius: 6,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                marginTop: 16,
+                alignItems: 'center'
               }}
               onPress={handleBookService}
             >
@@ -439,11 +429,11 @@ export default function HomeScreen(): JSX.Element {
           </View>
 
           {/* Location bar */}
-          <View style={{ 
-            marginHorizontal: 16, 
-            marginTop: 20, 
-            flexDirection: 'row', 
-            alignItems: 'center' 
+          <View style={{
+            marginHorizontal: 16,
+            marginTop: 20,
+            flexDirection: 'row',
+            alignItems: 'center'
           }}>
             <Text style={{ color: '#666', fontSize: 14 }}>Current Location: </Text>
             <Text style={{ color: '#333', fontWeight: '500', fontSize: 14 }}>
@@ -453,15 +443,15 @@ export default function HomeScreen(): JSX.Element {
           </View>
 
           {/* Search bar */}
-          <View style={{ 
-            marginHorizontal: 16, 
-            marginTop: 12, 
-            backgroundColor: '#f1f1f1', 
-            borderRadius: 8, 
-            flexDirection: 'row', 
-            alignItems: 'center', 
-            paddingHorizontal: 16, 
-            paddingVertical: 12 
+          <View style={{
+            marginHorizontal: 16,
+            marginTop: 12,
+            backgroundColor: '#f1f1f1',
+            borderRadius: 8,
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 12
           }}>
             <Search size={20} color="#777" />
             <TextInput
@@ -477,18 +467,18 @@ export default function HomeScreen(): JSX.Element {
             contentContainerStyle={{ paddingBottom: 80 }}
             showsVerticalScrollIndicator={false}
           >
-            {/* Special Offers */}
-            <View style={{ paddingHorizontal: 16 }}>
-              <View style={{ 
-                flexDirection: 'row', 
-                justifyContent: 'space-between', 
-                alignItems: 'center' 
+            {/* Special Offers 
+             <View style={{ paddingHorizontal: 16 }}>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center'
               }}>
                 <Text style={{ fontWeight: '600', fontSize: 18, color: '#333' }}>Special Offers</Text>
                 <Text style={{ color: '#3b82f6', fontSize: 14 }}>View all</Text>
               </View>
 
-              {/* Special Offers Carousel */}
+               Special Offers Carousel 
               <View style={{ marginTop: 16 }}>
                 <FlatList
                   data={specialOffers}
@@ -501,17 +491,17 @@ export default function HomeScreen(): JSX.Element {
                   decelerationRate="fast"
                 />
               </View>
-            </View>
+            </View> */}
 
             {/* Services */}
             <View style={{ marginTop: 32, paddingHorizontal: 16 }}>
               <Text style={{ fontWeight: '600', fontSize: 18, color: '#333' }}>Services</Text>
 
               {filteredServices.length > 0 ? (
-                <View style={{ 
-                  flexDirection: 'row', 
-                  flexWrap: 'wrap', 
-                  justifyContent: 'space-between', 
+                <View style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  justifyContent: 'space-between',
                   marginTop: 16
                 }}>
                   {filteredServices.map((service) => (
@@ -548,64 +538,51 @@ export default function HomeScreen(): JSX.Element {
                   ))}
                 </View>
               ) : (
-                <View style={{ 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  marginTop: 24, 
-                  padding: 20, 
-                  backgroundColor: '#f5f5f5', 
-                  borderRadius: 8 
+                <View style={{
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: 24,
+                  padding: 20,
+                  backgroundColor: '#f5f5f5',
+                  borderRadius: 8
                 }}>
                   <Text style={{ color: '#666', textAlign: 'center' }}>
-                    No services found matching "{searchQuery}"
+                    No Services Found at your Location.
                   </Text>
-                  <TouchableOpacity 
-                    style={{ 
-                      marginTop: 12, 
-                      paddingVertical: 8, 
-                      paddingHorizontal: 16, 
-                      backgroundColor: '#f97316', 
-                      borderRadius: 6 
-                    }}
-                    onPress={() => handleSearch('')}
-                  >
-                    <Text style={{ color: 'white', fontWeight: '500' }}>
-                      Show All Services
-                    </Text>
-                  </TouchableOpacity>
+
                 </View>
               )}
             </View>
 
             {/* Recent Bookings */}
             <View style={{ marginTop: 24, paddingHorizontal: 16, paddingBottom: 80 }}>
-              <View style={{ 
-                flexDirection: 'row', 
-                justifyContent: 'space-between', 
-                alignItems: 'center' 
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center'
               }}>
                 <Text style={{ fontWeight: '600', fontSize: 18, color: '#333' }}>Recent Bookings</Text>
                 <Text style={{ color: '#3b82f6', fontSize: 14 }}>View history</Text>
               </View>
 
-              <View style={{ 
-                marginTop: 16, 
-                alignItems: 'center', 
-                paddingVertical: 40, 
-                borderWidth: 1, 
-                borderColor: '#e5e5e5', 
-                borderRadius: 8 
+              <View style={{
+                marginTop: 16,
+                alignItems: 'center',
+                paddingVertical: 40,
+                borderWidth: 1,
+                borderColor: '#e5e5e5',
+                borderRadius: 8
               }}>
                 <Calendar size={40} color="#999" />
                 <Text style={{ marginTop: 12, color: '#666' }}>No recent bookings found</Text>
 
-                <TouchableOpacity 
-                  style={{ 
-                    marginTop: 20, 
-                    backgroundColor: '#fff3e0', 
-                    borderRadius: 6, 
-                    paddingHorizontal: 20, 
-                    paddingVertical: 12 
+                <TouchableOpacity
+                  style={{
+                    marginTop: 20,
+                    backgroundColor: '#fff3e0',
+                    borderRadius: 6,
+                    paddingHorizontal: 20,
+                    paddingVertical: 12
                   }}
                   onPress={handleBookService}
                 >

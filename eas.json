@@ -8,13 +8,15 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://admin.thehelpit.com/api/v1"
+        "EXPO_PUBLIC_API_BASE_URL": "https://admin.thehelpit.com/api/v1",
+        "EXPO_PUBLIC_SOCKET_BASE_URL": "https://admin.thehelpit.com"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://admin.thehelpit.com/api/v1"
+        "EXPO_PUBLIC_API_BASE_URL": "https://admin.thehelpit.com/api/v1",
+        "EXPO_PUBLIC_SOCKET_BASE_URL": "https://admin.thehelpit.com"
       }
     },
     "production": {
@@ -23,7 +25,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://admin.thehelpit.com/api/v1"
+        "EXPO_PUBLIC_API_BASE_URL": "https://admin.thehelpit.com/api/v1",
+        "EXPO_PUBLIC_SOCKET_BASE_URL": "https://admin.thehelpit.com"
       }
     }
   },

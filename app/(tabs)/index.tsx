@@ -1,15 +1,53 @@
-import React, { useRef, useState } from 'react';
-import { View, Text, FlatList, Image, Dimensions, TouchableOpacity, StatusBar, StyleSheet, Platform } from 'react-native';
+import React, { useRef, useState, useEffect, useContext } from 'react';
+import { View, Text, FlatList, Image, Dimensions, TouchableOpacity, StatusBar, StyleSheet, Platform, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router'; 
 import Svg, { Circle } from 'react-native-svg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AuthContext } from '@/app/_layout';
 
 const { width, height } = Dimensions.get('window');
 
 const OnboardingScreen = () => {
-  // Use router instead of navigation
   const router = useRouter();
+  const { setAuthState } = useContext(AuthContext);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef(null);
+
+  // Check authentication on component mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const token = await AsyncStorage.getItem('accessToken');
+        const role = await AsyncStorage.getItem('userRole');
+
+        if (token && role) {
+          setAuthState(true, role);
+          if (role === 'customer' || role === 'USER') {
+            router.replace('/(customer)/HomeScreen');
+          } else if (role === 'SERVICE_PROVIDER' || role === 'service') {
+            router.replace('/(service)/ProfileScreen');
+          }
+        } else {
+          setIsLoading(false); // Stop loading if not authenticated
+        }
+      } catch (error) {
+        console.error('Error checking authentication:', error);
+        setIsLoading(false); // Stop loading on error
+      }
+    };
+
+    checkAuth();
+  }, [router, setAuthState]);
+
+  if (isLoading) {
+    // Show a loading indicator while checking authentication
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#FFBB84" />
+      </View>
+    );
+  }
 
   const slides = [
     {
@@ -47,8 +85,8 @@ const OnboardingScreen = () => {
     if (currentIndex < slides.length - 1) {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
     } else {
-      // Use router to navigate directly with the path
-      router.replace('/(auth)/login-selection');    }
+      router.replace('/(auth)/login-selection');
+    }
   };
 
   const getButtonText = () => {
@@ -157,6 +195,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFBB84', // Peach-orange background as in image
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFBB84',
+  },
   slide: {
     width,
     height,
@@ -262,11 +306,11 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
-    fontSize: 30, // Increased from 20 to 30
+    fontSize: 30,
     fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 34, // Added line height to ensure vertical centering
-    paddingBottom: 2, // Small adjustment to visually center the arrow
+    lineHeight: 34,
+    paddingBottom: 2,
   }
 });
 

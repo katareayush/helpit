@@ -3,7 +3,7 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import "@/global.css";
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -12,6 +12,7 @@ import { View, Text, ActivityIndicator } from 'react-native';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 
+// Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
 
 import React from 'react';
@@ -94,11 +95,11 @@ export default function RootLayout() {
     };
   }, []);
 
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+  const onLayoutRootView = useCallback(async () => {
+    if (loaded && !isLoading) {
+      await SplashScreen.hideAsync();
     }
-  }, [loaded]);
+  }, [loaded, isLoading]);
 
   if (!loaded) {
     return null;
@@ -116,16 +117,18 @@ export default function RootLayout() {
   return (
     <AuthContext.Provider value={{ isAuthenticated, userRole, setAuthState }}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack screenOptions={{ headerShown: false }}>
-          {/* Update these to match your actual routes */}
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(customer)" />
-          <Stack.Screen name="(service)" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="+not-found" />
-          <Stack.Screen name="_sitemap" />
-        </Stack>
-        <StatusBar style="auto" />
+        <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+          <Stack screenOptions={{ headerShown: false }}>
+            {/* Update these to match your actual routes */}
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(customer)" />
+            <Stack.Screen name="(service)" />
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="+not-found" />
+            <Stack.Screen name="_sitemap" />
+          </Stack>
+          <StatusBar style="auto" />
+        </View>
       </ThemeProvider>
     </AuthContext.Provider>
   );

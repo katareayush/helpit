@@ -75,64 +75,44 @@ const ProfileScreen: React.FC = () => {
     fetchProfile();
   }, []);
 
-  const fetchProfile = async () => {
+    const fetchProfile = async () => {
     try {
       setLoading(true);
       const token = await AsyncStorage.getItem('accessToken');
-
+  
       if (!token) {
         throw new Error('Authentication token not found');
       }
-
+  
       const response = await axios.get(`${API_BASE_URL}/service-provider/self-identification`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
-
+  
       if (response.data && response.data.data) {
         const profileData = response.data.data;
         setProfile({
           ...profileData,
           serviceIds: profileData.serviceIds || []
         });
-
+  
         setFormData({
           name: profileData.name || '',
           phoneNumber: profileData.phoneNumber || '',
           email: profileData.email || '',
           gender: profileData.gender || '',
-          isAvailable: profileData.isAvailable || false,
+          isAvailable: profileData.isAvailable || false, // Sync with backend
           isNotificationOn: profileData.isNotificationOn || true,
         });
       }
     } catch (err) {
       console.error('Error fetching profile:', err);
-      
-      if (err.response && err.response.status === 401) {
-        Toast.show({
-          type: 'error',
-          text1: 'Session Expired',
-          text2: 'Your session has expired. Please log in again.',
-          position: 'bottom',
-          visibilityTime: 4000,
-          autoHide: true,
-          onHide: async () => {
-            await AsyncStorage.removeItem('accessToken');
-            await AsyncStorage.removeItem('userRole');
-            await AsyncStorage.removeItem('userData');
-            router.replace('/SignInService');
-          }
-        });
-      } else {
-        setError('Failed to load profile data. Please try again later.');
-      }
+      setError('Failed to load profile data. Please try again later.');
     } finally {
       setLoading(false);
     }
   };
-
-  
 
   const handleInputChange = (name: keyof FormData, value: string | boolean) => {
     setFormData({
@@ -143,56 +123,60 @@ const ProfileScreen: React.FC = () => {
 
   const handleToggleChange = async (name: keyof FormData) => {
     const updatedValue = !formData[name];
+  
     setFormData({
       ...formData,
       [name]: updatedValue
     });
   
-    if (name === 'isAvailable' || name === 'isNotificationOn') {
-      if (name === 'isAvailable' && updatedValue === true) {
-        try {
-          const { status } = await Location.requestForegroundPermissionsAsync();
-          
-          if (status !== 'granted') {
-            Toast.show({
-              type: 'warning',
-              text1: 'Location Required',
-              text2: 'Location permission is needed to be available for bookings',
-              position: 'bottom',
-            });
-            
-            setFormData(prev => ({
-              ...prev,
-              isAvailable: false
-            }));
-            return;
-          }
-          
-          const location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced
-          });
-          
-          await updateSettingWithLocation(name, updatedValue, {
-            lat: location.coords.latitude,
-            long: location.coords.longitude
-          });
-        } catch (error) {
-          console.error('Error getting location:', error);
+    if (name === 'isAvailable' && updatedValue === true) {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+  
+        if (status !== 'granted') {
           Toast.show({
-            type: 'error',
-            text1: 'Location Error',
-            text2: 'Could not get your location. Please try again.',
-            position: 'bottom'
+            type: 'warning',
+            text1: 'Location Required',
+            text2: 'Location permission is needed to be available for bookings',
+            position: 'bottom',
           });
-          
+  
           setFormData(prev => ({
             ...prev,
             isAvailable: false
           }));
+          return;
         }
-      } else {
-        await updateSetting(name, updatedValue);
+  
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced
+        });
+  
+        await updateSettingWithLocation(name, updatedValue, {
+          lat: location.coords.latitude,
+          long: location.coords.longitude
+        });
+  
+        await AsyncStorage.setItem('@helpIt:location', JSON.stringify({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude
+        }));
+      } catch (error) {
+        console.error('Error getting location:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Location Error',
+          text2: 'Could not get your location. Please try again.',
+          position: 'bottom'
+        });
+  
+        setFormData(prev => ({
+          ...prev,
+          isAvailable: false
+        }));
       }
+    } else {
+      await updateSetting(name, updatedValue);
     }
   };
 
@@ -434,7 +418,7 @@ const ProfileScreen: React.FC = () => {
         <Text className="text-red-500 mb-5 text-center">{error}</Text>
         <TouchableOpacity
           className="bg-orange-400 py-3 px-6 rounded-lg"
-          onPress={fetchProfile}
+          onPress={handleLogout}
         >
           <Text className="text-white font-semibold">Retry</Text>
         </TouchableOpacity>

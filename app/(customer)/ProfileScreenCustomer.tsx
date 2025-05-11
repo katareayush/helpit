@@ -10,7 +10,9 @@ import {
   Alert,
   ScrollView,
   Modal,
-  FlatList
+  FlatList,
+  Platform,
+  StatusBar as RNStatusBar
 } from 'react-native';
 import { AntDesign, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -276,27 +278,29 @@ const ProfileScreenCustomer = () => {
     }
   };
 
-  const handleDeleteAccount = () => {
-    Alert.alert(
-      "Delete Account",
-      "Are you sure you want to delete your account? This action cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive",
-          onPress: () => {
-            // Add API call to delete account here
-            Alert.alert("Account Deletion", "Please contact customer support to delete your account.");
-          }
-        }
-      ]
-    );
-  };
+  // const handleDeleteAccount = () => {
+  //   Alert.alert(
+  //     "Delete Account",
+  //     "Are you sure you want to delete your account? This action cannot be undone.",
+  //     [
+  //       { text: "Cancel", style: "cancel" },
+  //       { 
+  //         text: "Delete", 
+  //         style: "destructive",
+  //         onPress: () => {
+  //           // Add API call to delete account here
+  //           Alert.alert("Account Deletion", "Please contact customer support to delete your account.");
+  //         }
+  //       }
+  //     ]
+  //   );
+  // };
 
   if (isLoading) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-100 justify-center items-center">
+      <SafeAreaView className="flex-1 bg-gray-100 justify-center items-center" style={{
+                paddingTop: Platform.OS === 'android' ? RNStatusBar.currentHeight : 0
+              }}>
         <ActivityIndicator size="large" color="#FF9966" />
         <Text className="mt-4 text-gray-600">Loading profile...</Text>
       </SafeAreaView>
@@ -442,12 +446,12 @@ const ProfileScreenCustomer = () => {
         </TouchableOpacity>
 
         {/* Delete Account */}
-        <TouchableOpacity 
+        {/* <TouchableOpacity 
           className="bg-[#FF5757] rounded-lg py-3.5 items-center mb-24"
           onPress={handleDeleteAccount}
         >
           <Text className="text-white text-sm font-semibold">Delete Account</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </ScrollView>
       </View>
 
