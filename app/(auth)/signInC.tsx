@@ -44,6 +44,12 @@ const SignInScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  const validateEmail = (email: string): boolean => {
+    return emailRegex.test(email);
+  };
+
   const toggleLoginMethod = () => {
     setIsEmail(!isEmail);
   };
@@ -51,6 +57,11 @@ const SignInScreen = () => {
   const handleSignIn = async () => {
     if (isEmail && !credentials.email) {
       Alert.alert('Error', 'Please enter your email');
+      return;
+    }
+    
+    if (isEmail && !validateEmail(credentials.email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
     

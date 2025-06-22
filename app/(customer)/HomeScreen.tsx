@@ -133,19 +133,19 @@ export default function HomeScreen(): JSX.Element {
   const fetchServices = async (): Promise<void> => {
     try {
       setIsLoading(true);
-      
+
       const servicesResponse = await axios.get(`${apiUrl}/services`);
-      
+
       if (servicesResponse.data?.success) {
         const apiServices: ApiService[] = servicesResponse.data.data || [];
-        
+
         const availableServiceIds = new Set();
-        
+
         const token = await AsyncStorage.getItem('accessToken');
-        
+
         if (token) {
           let userLat, userLong;
-          
+
           const storedLocation = await AsyncStorage.getItem('@helpIt:location');
           if (storedLocation) {
             const parsedLocation = JSON.parse(storedLocation);
@@ -156,20 +156,20 @@ export default function HomeScreen(): JSX.Element {
             userLat = currentLocation.coords.latitude;
             userLong = currentLocation.coords.longitude;
           }
-          
+
           if (userLat && userLong) {
             const providersResponse = await axios.get(
-              `${apiUrl}/service-provider/search`, 
-              { 
+              `${apiUrl}/service-provider/search`,
+              {
                 params: { lat: userLat, long: userLong, limit: 50 },
                 headers: { Authorization: `Bearer ${token}` }
               }
             );
-            
-            if (providersResponse.data?.success && 
-                providersResponse.data.data?.serviceProviders) {
+
+            if (providersResponse.data?.success &&
+              providersResponse.data.data?.serviceProviders) {
               const providers = providersResponse.data.data.serviceProviders;
-              
+
               providers.forEach(provider => {
                 if (provider.serviceIds && Array.isArray(provider.serviceIds)) {
                   provider.serviceIds.forEach(service => {
@@ -182,13 +182,14 @@ export default function HomeScreen(): JSX.Element {
             }
           }
         }
-        
+
         const mappedServices: Service[] = apiServices
           .filter(service => availableServiceIds.has(service._id))
           .map((service: ApiService) => {
-            const isDriverService = service.name.toLowerCase().includes('driver') || 
-                                    service.name.toLowerCase().includes('driving');
-            
+            const isDriverService = service.name.toLowerCase().includes('driver') ||
+              service.name.toLowerCase().includes('driving') ||
+              service.name.toLowerCase().includes('drivers');
+
             return {
               id: service._id,
               name: formatServiceName(service.name),
@@ -197,13 +198,13 @@ export default function HomeScreen(): JSX.Element {
               isDriver: isDriverService
             };
           });
-        
+
         setAllServices(mappedServices);
         setFilteredServices(mappedServices);
       }
     } catch (error) {
       console.error('Error fetching services:', error);
-      
+
       // No fallback, just show empty state
       setAllServices([]);
       setFilteredServices([]);
@@ -218,7 +219,7 @@ export default function HomeScreen(): JSX.Element {
     fetchServices();
   }, []);
 
-  // Get location
+  // Get location and update user location in database
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -241,6 +242,9 @@ export default function HomeScreen(): JSX.Element {
         };
         await AsyncStorage.setItem('@helpIt:location', JSON.stringify(locationData));
 
+        // Update user's location in DB - Make sure to send longitude first, then latitude
+        updateUserLocationInDB(loc.coords.longitude, loc.coords.latitude);
+
         if (address.length > 0) {
           const { city, region } = address[0];
           const locationString = `${city || ''}, ${region || ''}`;
@@ -256,6 +260,38 @@ export default function HomeScreen(): JSX.Element {
       }
     })();
   }, []);
+
+  // Function to update user location in database
+  const updateUserLocationInDB = async (longitude: number, latitude: number): Promise<void> => {
+    try {
+      const token = await AsyncStorage.getItem('accessToken');
+
+      if (!token) {
+        console.log('No token available to update location');
+        return;
+      }
+
+      // Update user with the new location data
+      await axios.put(
+        `${apiUrl}/user/`,
+        {
+          currentLocation: {
+            lat: latitude,
+            long: longitude
+          }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      console.log('User location updated successfully in database');
+    } catch (error) {
+      console.error('Error updating user location in database:', error);
+    }
+  };
 
   const fetchUserData = async (): Promise<void> => {
     setIsLoading(true);
@@ -278,6 +314,16 @@ export default function HomeScreen(): JSX.Element {
 
       if (response.data && response.data.success) {
         setUserData(response.data.data);
+
+        // Store user location from response in session storage if available
+        if (response.data.data.currentLocation?.coordinates) {
+          const [longitude, latitude] = response.data.data.currentLocation.coordinates;
+          const locationData = {
+            longitude,
+            latitude
+          };
+          await AsyncStorage.setItem('@helpIt:userDBLocation', JSON.stringify(locationData));
+        }
       } else {
         Alert.alert('Error', 'Failed to fetch user data');
       }
@@ -352,122 +398,125 @@ export default function HomeScreen(): JSX.Element {
       router.push('DriverServiceScreen');
     } else {
       router.push({
-        pathname: 'ServiceProviderScreen',
-        params: { serviceId: service.id, serviceName: service.name }
+        pathname: 'BookingScreen',
+        params: {
+          serviceId: service.id,
+          serviceName: service.name,
+        }
       });
     }
   };
 
-  const handleBookService = (): void => {
-    // Navigate to the first service in the list
-    if (allServices.length > 0) {
-      handleServicePress(allServices[0]);
+    const handleBookService = (): void => {
+      // Navigate to the first service in the list
+      if (allServices.length > 0) {
+        handleServicePress(allServices[0]);
+      }
+    };
+
+    if (isLoading) {
+      return (
+        <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f9fafb' }}>
+          <ActivityIndicator size="large" color="#f97316" />
+          <Text style={{ marginTop: 16, color: '#666' }}>Loading your information...</Text>
+        </SafeAreaView>
+      );
     }
-  };
 
-  if (isLoading) {
     return (
-      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f9fafb' }}>
-        <ActivityIndicator size="large" color="#f97316" />
-        <Text style={{ marginTop: 16, color: '#666' }}>Loading your information...</Text>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <>
-      <StatusBar style="dark" />
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f9fafb' }}>
-        <View style={{
-          flex: 1,
-          backgroundColor: '#f9fafb',
-          paddingTop: Platform.OS === 'ios' ? 0 : statusBarHeight
-        }}>
-          {/* Header */}
+      <>
+        <StatusBar style="dark" />
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#f9fafb' }}>
           <View style={{
-            paddingHorizontal: 16,
-            paddingVertical: 16,
-            flexDirection: 'row',
-            justifyContent: 'center', // Center horizontally
-            alignItems: 'center' // Center vertically
+            flex: 1,
+            backgroundColor: '#f9fafb',
+            paddingTop: Platform.OS === 'ios' ? 0 : statusBarHeight
           }}>
-            <Text style={{ fontWeight: 'bold', fontSize: 24, color: '#333', alignItems: 'center' }}>
-              Help<Text style={{ color: '#f97316' }}>It</Text>
-            </Text>
-          </View>
-
-          {/* Welcome Card */}
-          <View style={{
-            marginHorizontal: 16,
-            marginTop: 16,
-            backgroundColor: '#fff3e0',
-            borderRadius: 8,
-            padding: 20
-          }}>
-            <Text style={{ fontSize: 20, fontWeight: '600', color: '#333' }}>
-              Hello, {userData?.name?.split(' ')[0] || 'User'}!
-            </Text>
-            <Text style={{ color: '#555', marginTop: 8 }}>
-              What service do you need today?
-            </Text>
-
-            <TouchableOpacity
-              style={{
-                backgroundColor: 'white',
-                borderRadius: 6,
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                marginTop: 16,
-                alignItems: 'center'
-              }}
-              onPress={handleBookService}
-            >
-              <Text style={{ fontWeight: '500', color: '#333' }}>
-                Book a Service
+            {/* Header */}
+            <View style={{
+              paddingHorizontal: 16,
+              paddingVertical: 16,
+              flexDirection: 'row',
+              justifyContent: 'center', // Center horizontally
+              alignItems: 'center' // Center vertically
+            }}>
+              <Text style={{ fontWeight: 'bold', fontSize: 24, color: '#333', alignItems: 'center' }}>
+                Help<Text style={{ color: '#f97316' }}>It</Text>
               </Text>
-            </TouchableOpacity>
-          </View>
+            </View>
 
-          {/* Location bar */}
-          <View style={{
-            marginHorizontal: 16,
-            marginTop: 20,
-            flexDirection: 'row',
-            alignItems: 'center'
-          }}>
-            <Text style={{ color: '#666', fontSize: 14 }}>Current Location: </Text>
-            <Text style={{ color: '#333', fontWeight: '500', fontSize: 14 }}>
-              {errorMsg || location}
-            </Text>
-            <MapPin size={16} color="#555" style={{ marginLeft: 4 }} />
-          </View>
+            {/* Welcome Card */}
+            <View style={{
+              marginHorizontal: 16,
+              marginTop: 16,
+              backgroundColor: '#fff3e0',
+              borderRadius: 8,
+              padding: 20
+            }}>
+              <Text style={{ fontSize: 20, fontWeight: '600', color: '#333' }}>
+                Hello, {userData?.name?.split(' ')[0] || 'User'}!
+              </Text>
+              <Text style={{ color: '#555', marginTop: 8 }}>
+                What service do you need today?
+              </Text>
 
-          {/* Search bar */}
-          <View style={{
-            marginHorizontal: 16,
-            marginTop: 12,
-            backgroundColor: '#f1f1f1',
-            borderRadius: 8,
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 16,
-            paddingVertical: 12
-          }}>
-            <Search size={20} color="#777" />
-            <TextInput
-              placeholder="Search for services"
-              style={{ flex: 1, marginLeft: 8, color: '#333' }}
-              value={searchQuery}
-              onChangeText={handleSearch}
-            />
-          </View>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: 'white',
+                  borderRadius: 6,
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  marginTop: 16,
+                  alignItems: 'center'
+                }}
+                onPress={handleBookService}
+              >
+                <Text style={{ fontWeight: '500', color: '#333' }}>
+                  Book a Service
+                </Text>
+              </TouchableOpacity>
+            </View>
 
-          <ScrollView
-            style={{ flex: 1, marginTop: 20 }}
-            contentContainerStyle={{ paddingBottom: 80 }}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* Special Offers 
+            {/* Location bar */}
+            <View style={{
+              marginHorizontal: 16,
+              marginTop: 20,
+              flexDirection: 'row',
+              alignItems: 'center'
+            }}>
+              <Text style={{ color: '#666', fontSize: 14 }}>Current Location: </Text>
+              <Text style={{ color: '#333', fontWeight: '500', fontSize: 14 }}>
+                {errorMsg || location}
+              </Text>
+              <MapPin size={16} color="#555" style={{ marginLeft: 4 }} />
+            </View>
+
+            {/* Search bar */}
+            <View style={{
+              marginHorizontal: 16,
+              marginTop: 12,
+              backgroundColor: '#f1f1f1',
+              borderRadius: 8,
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 16,
+              paddingVertical: 12
+            }}>
+              <Search size={20} color="#777" />
+              <TextInput
+                placeholder="Search for services"
+                style={{ flex: 1, marginLeft: 8, color: '#333' }}
+                value={searchQuery}
+                onChangeText={handleSearch}
+              />
+            </View>
+
+            <ScrollView
+              style={{ flex: 1, marginTop: 20 }}
+              contentContainerStyle={{ paddingBottom: 80 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Special Offers 
              <View style={{ paddingHorizontal: 16 }}>
               <View style={{
                 flexDirection: 'row',
@@ -493,113 +542,113 @@ export default function HomeScreen(): JSX.Element {
               </View>
             </View> */}
 
-            {/* Services */}
-            <View style={{ marginTop: 32, paddingHorizontal: 16 }}>
-              <Text style={{ fontWeight: '600', fontSize: 18, color: '#333' }}>Services</Text>
+              {/* Services */}
+              <View style={{ marginTop: 32, paddingHorizontal: 16 }}>
+                <Text style={{ fontWeight: '600', fontSize: 18, color: '#333' }}>Services</Text>
 
-              {filteredServices.length > 0 ? (
+                {filteredServices.length > 0 ? (
+                  <View style={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    justifyContent: 'space-between',
+                    marginTop: 16
+                  }}>
+                    {filteredServices.map((service) => (
+                      <TouchableOpacity
+                        key={service.id}
+                        style={{
+                          width: '48%',
+                          backgroundColor: 'white',
+                          borderRadius: 8,
+                          marginBottom: 20,
+                          overflow: 'hidden',
+                          shadowColor: '#000',
+                          shadowOffset: { width: 0, height: 1 },
+                          shadowOpacity: 0.1,
+                          shadowRadius: 2,
+                          elevation: 2,
+                        }}
+                        onPress={() => handleServicePress(service)}
+                      >
+                        <Image
+                          source={{ uri: service.image }}
+                          style={{ width: '100%', height: 128 }}
+                          resizeMode="cover"
+                        />
+                        <View style={{ padding: 12 }}>
+                          <Text style={{ fontWeight: '500', color: '#333' }}>
+                            {service.name}
+                          </Text>
+                          <Text style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
+                            {service.description}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={{
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginTop: 24,
+                    padding: 20,
+                    backgroundColor: '#f5f5f5',
+                    borderRadius: 8
+                  }}>
+                    <Text style={{ color: '#666', textAlign: 'center' }}>
+                      No Services Found at your Location.
+                    </Text>
+
+                  </View>
+                )}
+              </View>
+
+              {/* Recent Bookings */}
+              <View style={{ marginTop: 24, paddingHorizontal: 16, paddingBottom: 80 }}>
                 <View style={{
                   flexDirection: 'row',
-                  flexWrap: 'wrap',
                   justifyContent: 'space-between',
-                  marginTop: 16
+                  alignItems: 'center'
                 }}>
-                  {filteredServices.map((service) => (
-                    <TouchableOpacity
-                      key={service.id}
-                      style={{
-                        width: '48%',
-                        backgroundColor: 'white',
-                        borderRadius: 8,
-                        marginBottom: 20,
-                        overflow: 'hidden',
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 1 },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 2,
-                        elevation: 2,
-                      }}
-                      onPress={() => handleServicePress(service)}
-                    >
-                      <Image
-                        source={{ uri: service.image }}
-                        style={{ width: '100%', height: 128 }}
-                        resizeMode="cover"
-                      />
-                      <View style={{ padding: 12 }}>
-                        <Text style={{ fontWeight: '500', color: '#333' }}>
-                          {service.name}
-                        </Text>
-                        <Text style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
-                          {service.description}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
+                  <Text style={{ fontWeight: '600', fontSize: 18, color: '#333' }}>Recent Bookings</Text>
+                  <Text style={{ color: '#3b82f6', fontSize: 14 }}>View history</Text>
                 </View>
-              ) : (
+
                 <View style={{
+                  marginTop: 16,
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  marginTop: 24,
-                  padding: 20,
-                  backgroundColor: '#f5f5f5',
+                  paddingVertical: 40,
+                  borderWidth: 1,
+                  borderColor: '#e5e5e5',
                   borderRadius: 8
                 }}>
-                  <Text style={{ color: '#666', textAlign: 'center' }}>
-                    No Services Found at your Location.
-                  </Text>
+                  <Calendar size={40} color="#999" />
+                  <Text style={{ marginTop: 12, color: '#666' }}>No recent bookings found</Text>
 
+                  <TouchableOpacity
+                    style={{
+                      marginTop: 20,
+                      backgroundColor: '#fff3e0',
+                      borderRadius: 6,
+                      paddingHorizontal: 20,
+                      paddingVertical: 12
+                    }}
+                    onPress={handleBookService}
+                  >
+                    <Text style={{ fontWeight: '500', color: '#333' }}>
+                      Book Your First Service
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-              )}
-            </View>
-
-            {/* Recent Bookings */}
-            <View style={{ marginTop: 24, paddingHorizontal: 16, paddingBottom: 80 }}>
-              <View style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <Text style={{ fontWeight: '600', fontSize: 18, color: '#333' }}>Recent Bookings</Text>
-                <Text style={{ color: '#3b82f6', fontSize: 14 }}>View history</Text>
               </View>
+            </ScrollView>
+          </View>
 
-              <View style={{
-                marginTop: 16,
-                alignItems: 'center',
-                paddingVertical: 40,
-                borderWidth: 1,
-                borderColor: '#e5e5e5',
-                borderRadius: 8
-              }}>
-                <Calendar size={40} color="#999" />
-                <Text style={{ marginTop: 12, color: '#666' }}>No recent bookings found</Text>
-
-                <TouchableOpacity
-                  style={{
-                    marginTop: 20,
-                    backgroundColor: '#fff3e0',
-                    borderRadius: 6,
-                    paddingHorizontal: 20,
-                    paddingVertical: 12
-                  }}
-                  onPress={handleBookService}
-                >
-                  <Text style={{ fontWeight: '500', color: '#333' }}>
-                    Book Your First Service
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </ScrollView>
-        </View>
-
-        {/* Bottom Navigation */}
-        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
-          <CustomTabBar activeRoute="HomeScreen" />
-        </View>
-      </SafeAreaView>
-    </>
-  );
-}
+          {/* Bottom Navigation */}
+          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
+            <CustomTabBar activeRoute="HomeScreen" />
+          </View>
+        </SafeAreaView>
+      </>
+    );
+  }

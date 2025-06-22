@@ -1,12 +1,11 @@
-
 module.exports = {
   expo: {
-    name: "HelpIt", 
-    displayName: "HelpIt", 
-    slug: "help--it",
+    name: "The HelpIt",
+    displayName: "The HelpIt",
+    slug: "help-it",
     version: "1.0.0",
     orientation: "portrait",
-    icon: "./assets/images/image-transparent.png", // This is your app icon
+    icon: "./assets/images/logo-helpit.png", // updated icon for Android < 8.0
     scheme: "helpitscheme",
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
@@ -21,7 +20,7 @@ module.exports = {
     android: {
       package: "com.katareayush.helpit",
       adaptiveIcon: {
-        foregroundImage: "./assets/images/adaptive-icon.png",
+        foregroundImage: "./assets/images/logo-helpit.png", // updated adaptive icon for Android 8+
         backgroundColor: "#ffffff"
       },
       splash: {

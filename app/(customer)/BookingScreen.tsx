@@ -11,6 +11,7 @@ import {
   Platform,
   StatusBar as RNStatusBar,
   KeyboardAvoidingView,
+  Dimensions,
 } from 'react-native';
 import { ArrowLeft, MapPin, Calendar, Clock } from 'lucide-react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -26,6 +27,8 @@ import { AuthContext } from '../_layout';
 // API Config
 const API_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_BASE_URL;
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 // Define types
 interface UserLocation {
@@ -77,10 +80,16 @@ interface ServiceProvider {
 
 interface BookingResponse {
   success: boolean;
-  booking: {
+  message?: string;
+  booking?: {
     _id: string;
     status: string;
     estimatedFare: number;
+  };
+  bookingId?: string;
+  data?: {
+    _id?: string;
+    bookingId?: string;
   };
 }
 
@@ -114,17 +123,17 @@ const BookingScreen: React.FC = () => {
   const [bookingStatus, setBookingStatus] = useState<string | null>(null);
   const [assignedProvider, setAssignedProvider] = useState<ServiceProvider | null>(null);
 
+  // Enhanced UI feedback states
+  const [declineCount, setDeclineCount] = useState<number>(0);
+  const [searchingMessage, setSearchingMessage] = useState<string>('Searching for service providers...');
+
   // Get the serviceId from URL params
   const serviceId = params.serviceId as string;
 
   // Function to format service name (remove underscores and capitalize)
   const formatServiceName = (name: string): string => {
     if (!name) return 'Service';
-
-    // Replace underscores with spaces
     const withSpaces = name.replace(/_/g, ' ');
-
-    // Capitalize each word
     return withSpaces.split(' ')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
@@ -132,11 +141,7 @@ const BookingScreen: React.FC = () => {
 
   // Format date when it changes
   useEffect(() => {
-    const formattedDateStr = date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
+    const formattedDateStr = date.toISOString().split('T')[0];
     setFormattedDate(formattedDateStr);
   }, [date]);
 
@@ -153,7 +158,6 @@ const BookingScreen: React.FC = () => {
         console.error('Error requesting location permission:', error);
       }
     };
-
     getUserLocation();
   }, []);
 
@@ -189,33 +193,58 @@ const BookingScreen: React.FC = () => {
         });
 
         // Listen for booking created confirmation
-        socket.on('booking_created', (data: { bookingId: string, bookingDetails: any }) => {
+        socket.on('booking_created', (data: { bookingId?: string, bookingDetails?: any, booking?: { _id: string } }) => {
           console.log('Booking created:', data);
-          if (data.bookingId && isMounted) {
-            setCurrentBookingId(data.bookingId);
-            setBookingStatus('PENDING');
-            setIsLoading(false);
-            Alert.alert(
-              'Success',
-              'Booking created successfully! Waiting for service provider to accept.'
-            );
+          if (isMounted) {
+            let bookingId;
+            if (data.bookingId) {
+              bookingId = data.bookingId;
+            } else if (data.booking && data.booking._id) {
+              bookingId = data.booking._id;
+            }
+            
+            if (bookingId) {
+              setCurrentBookingId(bookingId);
+              setBookingStatus('PENDING');
+              setIsLoading(false);
+              setDeclineCount(0); // Reset decline count
+              setSearchingMessage('Searching for service providers...');
+              Alert.alert(
+                'Success',
+                'Booking created successfully! Waiting for service provider to accept.'
+              );
+            } else {
+              console.warn('Socket booking_created event but no ID:', data);
+              setBookingStatus('PENDING');
+              setIsLoading(false);
+              Alert.alert(
+                'Success',
+                'Booking created successfully! Waiting for service provider to accept.'
+              );
+            }
           }
         });
 
         // Listen for booking acceptance
         socket.on('booking_accepted', (data: {
-          bookingId: string,
-          serviceProvider: ServiceProvider,
-          bookingDetails: any
+          bookingId?: string,
+          booking?: { _id: string },
+          serviceProvider?: ServiceProvider,
+          provider?: ServiceProvider,
+          bookingDetails?: any
         }) => {
           console.log('Booking accepted:', data);
-          if (data.bookingId === currentBookingId && isMounted) {
+          
+          const bookingId = data.bookingId || (data.booking && data.booking._id);
+          const provider = data.serviceProvider || data.provider;
+          
+          if (bookingId === currentBookingId && provider && isMounted) {
             setBookingStatus('ACCEPTED');
-            setAssignedProvider(data.serviceProvider);
+            setAssignedProvider(provider);
 
             Alert.alert(
               'Booking Accepted',
-              `${data.serviceProvider.name} has accepted your booking request and will arrive shortly.`,
+              `${provider.name} has accepted your booking request and will arrive shortly.`,
               [
                 { text: 'View Details', onPress: () => router.push('/MyBookingScreen') },
                 { text: 'OK' }
@@ -229,12 +258,10 @@ const BookingScreen: React.FC = () => {
           console.log('Booking completed:', data);
           if (data.bookingId === currentBookingId && isMounted) {
             setBookingStatus('COMPLETED');
-
             Alert.alert(
               'Service Completed',
               `Your service has been completed. Final fare: ₹${data.finalFare.toFixed(2)}`,
               [
-                { text: 'Rate Service', onPress: () => router.push('/RateServiceScreen') },
                 { text: 'OK', onPress: () => router.push('/MyBookingScreen') }
               ]
             );
@@ -250,7 +277,6 @@ const BookingScreen: React.FC = () => {
           if (data.bookingId === currentBookingId && isMounted) {
             setBookingStatus('CANCELLED');
             setAssignedProvider(null);
-
             Alert.alert(
               'Booking Cancelled',
               'The service provider has cancelled your booking. Would you like to try again?',
@@ -262,15 +288,55 @@ const BookingScreen: React.FC = () => {
           }
         });
 
-        // Listen for decline service
+        // Listen for decline service (individual provider declining - matches your backend)
         socket.on('decline_service', (data: { bookingId: string, message: string }) => {
-          console.log('Service declined:', data);
+          console.log('Service declined by a provider:', data);
           if (data.bookingId === currentBookingId && isMounted) {
-            // No need to update status as it's still pending, just notify user
+            setDeclineCount(prev => {
+              const newCount = prev + 1;
+              
+              // Update searching message based on decline count
+              if (newCount === 1) {
+                setSearchingMessage('A provider declined. Looking for other providers...');
+              } else if (newCount === 2) {
+                setSearchingMessage('Multiple providers declined. Expanding search...');
+              } else if (newCount >= 3) {
+                setSearchingMessage('Still searching for available providers...');
+              }
+              
+              return newCount;
+            });
+
+            // Don't show alert for every decline, just update the message
+            console.log(`Provider declined booking ${data.bookingId}. Total declines: ${declineCount + 1}`);
+          }
+        });
+
+        // Listen for hour-based booking decline (complete rejection - matches your backend)
+        socket.on('decline_hours_service', (data: { bookingId: string, message: string }) => {
+          console.log('Hour-based service declined completely:', data);
+          if (data.bookingId === currentBookingId && isMounted) {
+            setBookingStatus('DECLINE');
+            setAssignedProvider(null);
+
             Alert.alert(
-              'Looking for Provider',
-              'A service provider declined. We are still looking for available providers.'
+              'Booking Declined',
+              'The service provider has declined your booking. Would you like to try again?',
+              [
+                { text: 'Try Again', onPress: () => resetBookingState() },
+                { text: 'Go to Home', onPress: () => router.push('/HomeScreen') }
+              ]
             );
+          }
+        });
+
+        // Listen for booking cancelled by user confirmation
+        socket.on('booking_cancelled', (data: { bookingId: string, cancelledBy: string }) => {
+          console.log('Booking cancelled confirmation:', data);
+          if (data.bookingId === currentBookingId && isMounted) {
+            setBookingStatus('CANCELLED');
+            setAssignedProvider(null);
+            setIsLoading(false);
           }
         });
 
@@ -278,6 +344,9 @@ const BookingScreen: React.FC = () => {
           console.error('Socket error:', error);
           if (isMounted) {
             setSocketConnected(false);
+            if (error.message) {
+              Alert.alert('Connection Error', error.message);
+            }
           }
         });
 
@@ -312,6 +381,8 @@ const BookingScreen: React.FC = () => {
     setCurrentBookingId(null);
     setBookingStatus(null);
     setAssignedProvider(null);
+    setDeclineCount(0);
+    setSearchingMessage('Searching for service providers...');
   };
 
   // Fetch service details
@@ -324,7 +395,6 @@ const BookingScreen: React.FC = () => {
   const fetchServiceDetails = async (id: string): Promise<void> => {
     try {
       setIsLoading(true);
-
       const response = await axios.get(`${API_URL}/services`);
 
       if (response.data?.success) {
@@ -333,11 +403,9 @@ const BookingScreen: React.FC = () => {
 
         if (selectedService) {
           setService(selectedService);
-          // Format the service name and update state
           setFormattedServiceName(formatServiceName(selectedService.name));
         } else {
           Alert.alert('Error', 'Service not found');
-          // Set default service data to prevent loading state
           setService({
             _id: id,
             name: "Service",
@@ -366,13 +434,10 @@ const BookingScreen: React.FC = () => {
   const handleTimeChange = (event: DateTimePickerEvent, selectedTime?: Date): void => {
     setShowTimePicker(false);
     if (selectedTime) {
-      // Format time as string (e.g., "10:30 AM")
       const hours = selectedTime.getHours();
       const minutes = selectedTime.getMinutes();
-      const ampm = hours >= 12 ? 'PM' : 'AM';
-      const hours12 = hours % 12 || 12;
       const minutesStr = minutes < 10 ? `0${minutes}` : minutes;
-      const timeStr = `${hours12}:${minutesStr} ${ampm}`;
+      const timeStr = `${hours}:${minutesStr}`;
       setTime(timeStr);
     }
   };
@@ -396,7 +461,6 @@ const BookingScreen: React.FC = () => {
       }
 
       const { status } = await Location.requestForegroundPermissionsAsync();
-
       if (status !== 'granted') {
         Alert.alert('Permission Denied', 'Location permission is required');
         return;
@@ -405,7 +469,6 @@ const BookingScreen: React.FC = () => {
       Alert.alert('Loading', 'Getting your current location...');
 
       const location = await Location.getCurrentPositionAsync({});
-
       const { latitude, longitude } = location.coords;
       setLocationCoordinates({ latitude, longitude });
 
@@ -432,7 +495,6 @@ const BookingScreen: React.FC = () => {
           ].filter(Boolean).join(', ');
 
           setServiceLocation(formattedAddress);
-
           await AsyncStorage.setItem('@helpIt:locationString', formattedAddress);
         } else {
           setServiceLocation(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
@@ -447,7 +509,6 @@ const BookingScreen: React.FC = () => {
   };
 
   const validateDuration = (value: string): boolean => {
-    // Check if it's a positive number
     const durationNum = parseInt(value);
     return !isNaN(durationNum) && durationNum > 0 && durationNum <= 24;
   };
@@ -493,7 +554,6 @@ const BookingScreen: React.FC = () => {
       let estimatedDistance: number | undefined = undefined;
       if (service.unitType === 'KM') {
         try {
-          // Calculate distance or use distance matrix API
           const distanceResponse = await axios.post(
             `${API_URL}/estimate-distance`,
             { coordinates: locationCoordinates },
@@ -501,11 +561,10 @@ const BookingScreen: React.FC = () => {
           );
 
           if (distanceResponse.data?.success) {
-            estimatedDistance = distanceResponse.data.distance || 5; // Default to 5km if API doesn't return a value
+            estimatedDistance = distanceResponse.data.distance || 5;
           }
         } catch (error) {
           console.error('Error estimating distance:', error);
-          // Default distance if estimation fails
           estimatedDistance = 5;
         }
       }
@@ -522,13 +581,21 @@ const BookingScreen: React.FC = () => {
         },
         userLocation: locationCoordinates,
         duration: parseInt(duration || '1'),
-        estimatedDistance: estimatedDistance
+        estimatedDistance: estimatedDistance,
+        ...(service.unitType === 'HOUR' && {
+          serviceDate: formattedDate,
+          startTime: time,
+          totalNoofHours: parseInt(duration || '1')
+        })
       };
 
       // Choose API endpoint based on service type
-      const bookingEndpoint = service.unitType === 'HOUR' 
-        ? `${API_URL}/booking/hour-based/book` 
+      const bookingEndpoint = service.unitType === 'HOUR'
+        ? `${API_URL}/booking/hour-based/book`
         : `${API_URL}/booking/book`;
+
+      console.log('Creating booking with data:', bookingData);
+      console.log('Using endpoint:', bookingEndpoint);
 
       // Make booking API request
       const response = await axios.post<BookingResponse>(
@@ -537,19 +604,57 @@ const BookingScreen: React.FC = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      if (response.data && response.data.success) {
-        // Store booking ID for socket events
-        setCurrentBookingId(response.data.booking._id);
-        setBookingStatus('PENDING');
+      console.log('Booking response:', response.data);
 
-        // Show loading state while waiting for socket confirmation
-        Alert.alert('Booking Created', 'Searching for service providers near you...');
+      if (response.data && response.data.success) {
+        let bookingId;
+        
+        if (response.data.booking && response.data.booking._id) {
+          bookingId = response.data.booking._id;
+        } else if (response.data.bookingId) {
+          bookingId = response.data.bookingId;
+        } else if (response.data.data && response.data.data._id) {
+          bookingId = response.data.data._id;
+        } else if (response.data.data && response.data.data.bookingId) {
+          bookingId = response.data.data.bookingId;
+        }
+        
+        if (bookingId) {
+          setCurrentBookingId(bookingId);
+          setBookingStatus('PENDING');
+          
+          Alert.alert(
+            'Booking Created', 
+            service.unitType === 'HOUR' 
+              ? 'Your booking has been sent to service providers. Please wait for their response.'
+              : 'Searching for service providers near you...',
+            [{ text: 'OK' }]
+          );
+        } else {
+          console.warn('Booking created successfully but no booking ID found in response:', response.data);
+          setBookingStatus('PENDING');
+          Alert.alert(
+            'Booking Created', 
+            'Your booking has been created successfully. You can check your bookings in the My Bookings screen.',
+            [{ text: 'OK' }]
+          );
+        }
       } else {
         throw new Error('Booking creation failed');
       }
     } catch (error: any) {
       console.error('Error creating booking:', error);
-      const errorMsg = error.response?.data?.message || 'Failed to create booking';
+      
+      let errorMsg = 'Failed to create booking';
+      if (error.response) {
+        errorMsg = error.response.data?.message || error.response.data?.error || 'Server error occurred';
+        console.log('Server error response:', error.response.data);
+      } else if (error.request) {
+        errorMsg = 'Network error. Please check your internet connection.';
+      } else {
+        errorMsg = error.message || 'An unexpected error occurred';
+      }
+      
       Alert.alert('Error', errorMsg);
       setIsLoading(false);
     }
@@ -578,7 +683,6 @@ const BookingScreen: React.FC = () => {
       if (response.data && response.data.success) {
         setBookingStatus('CANCELLED');
         setAssignedProvider(null);
-
         Alert.alert('Booking Cancelled', 'Your booking has been cancelled successfully.');
         resetBookingState();
       } else {
@@ -593,7 +697,7 @@ const BookingScreen: React.FC = () => {
     }
   };
 
-  // Render booking status view
+  // Render booking status view with enhanced UI feedback
   const renderBookingStatusView = () => {
     if (!currentBookingId || !bookingStatus) return null;
 
@@ -605,16 +709,20 @@ const BookingScreen: React.FC = () => {
           </Text>
 
           <View className="flex-row justify-center mb-3">
-            <View className={`px-3 py-1 rounded-full ${bookingStatus === 'PENDING' ? 'bg-amber-100' :
-                bookingStatus === 'ACCEPTED' ? 'bg-blue-100' :
-                  bookingStatus === 'COMPLETED' ? 'bg-green-100' :
-                    'bg-red-100'
+            <View className={`px-3 py-1 rounded-full ${
+              bookingStatus === 'PENDING' ? 'bg-amber-100' :
+              bookingStatus === 'ACCEPTED' ? 'bg-blue-100' :
+              bookingStatus === 'COMPLETED' ? 'bg-green-100' :
+              bookingStatus === 'DECLINE' ? 'bg-red-100' :
+              'bg-red-100'
+            }`}>
+              <Text className={`font-medium ${
+                bookingStatus === 'PENDING' ? 'text-amber-700' :
+                bookingStatus === 'ACCEPTED' ? 'text-blue-700' :
+                bookingStatus === 'COMPLETED' ? 'text-green-700' :
+                bookingStatus === 'DECLINE' ? 'text-red-700' :
+                'text-red-700'
               }`}>
-              <Text className={`font-medium ${bookingStatus === 'PENDING' ? 'text-amber-700' :
-                  bookingStatus === 'ACCEPTED' ? 'text-blue-700' :
-                    bookingStatus === 'COMPLETED' ? 'text-green-700' :
-                      'text-red-700'
-                }`}>
                 {bookingStatus}
               </Text>
             </View>
@@ -622,9 +730,21 @@ const BookingScreen: React.FC = () => {
 
           {bookingStatus === 'PENDING' && (
             <>
-              <Text className="text-center text-gray-600 mb-3">
-                Waiting for a service provider to accept your booking request...
+              <Text className="text-center text-gray-600 mb-2">
+                {searchingMessage}
               </Text>
+              
+              {declineCount > 0 && (
+                <Text className="text-center text-sm text-amber-600 mb-3">
+                  {declineCount} provider{declineCount > 1 ? 's' : ''} declined
+                </Text>
+              )}
+              
+              <View className="flex-row items-center justify-center mb-3">
+                <ActivityIndicator size="small" color="#F59E0B" />
+                <Text className="ml-2 text-gray-500 text-sm">Looking for providers...</Text>
+              </View>
+              
               <TouchableOpacity
                 className="bg-red-100 rounded-lg py-3 items-center mt-2"
                 onPress={handleCancelBooking}
@@ -668,6 +788,28 @@ const BookingScreen: React.FC = () => {
               </TouchableOpacity>
             </>
           )}
+
+          {bookingStatus === 'DECLINE' && (
+            <>
+              <Text className="text-center text-gray-600 mb-3">
+                The service provider has declined your booking request.
+              </Text>
+              <TouchableOpacity
+                className="bg-blue-500 rounded-lg py-3 items-center mt-2 mb-2"
+                onPress={() => resetBookingState()}
+              >
+                <Text className="text-white font-medium">Try Again</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+
+        {/* Socket connection status */}
+        <View className="mt-3 flex-row items-center justify-center">
+          <View className={`w-2 h-2 rounded-full mr-2 ${socketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+          <Text className={`text-xs ${socketConnected ? 'text-green-600' : 'text-red-600'}`}>
+            {socketConnected ? 'Connected' : 'Disconnected'}
+          </Text>
         </View>
       </View>
     );
@@ -679,25 +821,33 @@ const BookingScreen: React.FC = () => {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1"
+        keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
       >
         <SafeAreaView className="flex-1 bg-white" style={{
           paddingTop: Platform.OS === 'android' ? RNStatusBar.currentHeight : 0
         }}>
+          {/* Fixed header outside ScrollView */}
+          <View className="flex-row items-center justify-between px-5 py-4 border-b border-gray-100">
+            <TouchableOpacity onPress={() => router.back()}>
+              <ArrowLeft size={24} color="#000" />
+            </TouchableOpacity>
+            <Text className="text-xl font-bold text-center flex-1">
+              Book {formattedServiceName}
+            </Text>
+            <View style={{ width: 24 }} />
+          </View>
+          
+          {/* Improved ScrollView configuration */}
           <ScrollView
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ flexGrow: 1 }}
+            contentContainerStyle={{ 
+              paddingBottom: 120, // Extra padding for Tab Bar
+              flexGrow: 1, 
+            }}
+            showsVerticalScrollIndicator={true}
+            scrollEventThrottle={16}
+            bounces={true}
           >
-            {/* Header */}
-            <View className="flex-row items-center justify-between px-5 py-4 border-b border-gray-100">
-              <TouchableOpacity onPress={() => router.back()}>
-                <ArrowLeft size={24} color="#000" />
-              </TouchableOpacity>
-              <Text className="text-xl font-bold text-center flex-1">
-                Book {formattedServiceName}
-              </Text>
-              <View style={{ width: 24 }} />
-            </View>
-
             <View className="p-5">
               {isLoading && !service ? (
                 <View className="items-center justify-center py-10">
@@ -726,8 +876,8 @@ const BookingScreen: React.FC = () => {
                   {/* Booking Status View - Show only if there's an active booking */}
                   {renderBookingStatusView()}
 
-                  {/* Show booking form only if no active booking or booking is cancelled */}
-                  {(!currentBookingId || bookingStatus === 'CANCELLED') && (
+                  {/* Show booking form only if no active booking or booking is cancelled/declined */}
+                  {(!currentBookingId || ['CANCELLED', 'DECLINE', 'COMPLETED'].includes(bookingStatus || '')) && (
                     <>
                       {/* Service Location */}
                       <View className="mb-5">
@@ -800,7 +950,6 @@ const BookingScreen: React.FC = () => {
                         )}
                       </View>
 
-                      {/* Duration */}
                       <View className="mb-5">
                         <Text className="text-base font-medium text-gray-800 mb-2">Duration (hours)</Text>
                         <TextInput
@@ -814,7 +963,6 @@ const BookingScreen: React.FC = () => {
                         <Text className="text-xs text-gray-500 mt-1">Please enter between 1-24 hours</Text>
                       </View>
 
-                      {/* Proceed Button */}
                       <TouchableOpacity
                         className={`bg-amber-500 rounded-lg py-4 items-center ${isLoading ? 'opacity-70' : ''}`}
                         onPress={handleProceedToConfirm}
@@ -827,13 +975,32 @@ const BookingScreen: React.FC = () => {
                           <Text className="text-white text-lg font-medium">Proceed to Confirm</Text>
                         )}
                       </TouchableOpacity>
+
+                      <View className="flex-row items-center my-6">
+                        <View className="flex-1 h-px bg-gray-300" />
+                        <Text className="mx-4 text-sm text-gray-500">or</Text>
+                        <View className="flex-1 h-px bg-gray-300" />
+                      </View>
+
+                      {/* Buy Credits Button */}
+                      <TouchableOpacity
+                        className="bg-black rounded-lg py-4 items-center"
+                        onPress={() => {
+                          router.push('/BuyCreditsScreen');
+                        }}
+                        style={{ minHeight: 56 }}
+                      >
+                        <Text className="text-white text-lg font-medium">Buy Credits</Text>
+                      </TouchableOpacity>
+                      
+                      <View style={{ height: 30 }} />
                     </>
                   )}
                 </>
               )}
             </View>
           </ScrollView>
-          <CustomTabBar activeRoute="Home" />
+          
         </SafeAreaView>
       </KeyboardAvoidingView>
     </>

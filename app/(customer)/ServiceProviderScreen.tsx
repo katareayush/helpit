@@ -336,7 +336,7 @@ export default function ServiceProviderScreen(): JSX.Element {
     router.push({
       pathname: 'BookingScreen',
       params: {
-        cleanerId: provider._id,
+        serviceProviderId: provider._id,
         serviceId: provider.serviceId._id
       }
     });

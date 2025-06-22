@@ -13,7 +13,7 @@ import {
   FlatList
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { AntDesign, Feather } from '@expo/vector-icons';
+import { AntDesign, Feather, Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 
 // Replace with your actual API base URL
@@ -56,8 +56,7 @@ const SignupScreen: React.FC = () => {
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
   const [errors, setErrors] = useState<FormErrors>({});
-  
-  // Removed country codes
+  const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
   
   // Gender options - must have exact values that backend expects
   const genderOptions = [
@@ -124,6 +123,12 @@ const SignupScreen: React.FC = () => {
     if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match';
     }
+
+    // Terms acceptance validation
+    if (!termsAccepted) {
+      Alert.alert('Error', 'Please accept the Terms & Conditions and Privacy Policy to continue');
+      return false;
+    }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -189,7 +194,13 @@ const SignupScreen: React.FC = () => {
     }
   };
 
-  // Removed country code modal
+  const goToTermsConditions = () => {
+    router.push('/TermsAndCondition');
+  };
+
+  const goToPrivacyPolicy = () => {
+    router.push('/PrivacyPolicy');
+  };
   
   // Gender modal - similar approach to country code for consistency
   const renderGenderModal = () => {
@@ -326,10 +337,43 @@ const SignupScreen: React.FC = () => {
           </View>
           {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
 
+          {/* Terms & Conditions Checkbox */}
+          <View style={styles.termsContainer}>
+            <TouchableOpacity 
+              onPress={() => setTermsAccepted(!termsAccepted)}
+              style={styles.checkboxContainer}
+              disabled={loading}
+            >
+              <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}>
+                {termsAccepted && (
+                  <Ionicons name="checkmark" size={14} color="white" />
+                )}
+              </View>
+            </TouchableOpacity>
+            <View style={styles.termsTextContainer}>
+              <Text style={styles.termsText}>
+                I agree to the{' '}
+                <Text 
+                  style={styles.termsLink}
+                  onPress={goToTermsConditions}
+                >
+                  Terms & Conditions
+                </Text>
+                {' '}and{' '}
+                <Text 
+                  style={styles.termsLink}
+                  onPress={goToPrivacyPolicy}
+                >
+                  Privacy Policy
+                </Text>
+              </Text>
+            </View>
+          </View>
+
           <TouchableOpacity 
-            style={styles.signupButton}
+            style={[styles.signupButton, !termsAccepted && styles.signupButtonDisabled]}
             onPress={handleSignup}
-            disabled={loading}
+            disabled={loading || !termsAccepted}
           >
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
@@ -405,7 +449,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginLeft: 5,
   },
-  // Removed phone input styles
   // Gender selection styles
   genderSelector: {
     backgroundColor: '#f5f5f5',
@@ -445,12 +488,53 @@ const styles = StyleSheet.create({
   passwordVisibilityButton: {
     padding: 15,
   },
+  // Terms & Conditions styles
+  termsContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  checkboxContainer: {
+    marginRight: 12,
+    marginTop: 2,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'white',
+  },
+  checkboxChecked: {
+    backgroundColor: '#FDA172',
+    borderColor: '#FDA172',
+  },
+  termsTextContainer: {
+    flex: 1,
+  },
+  termsText: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  termsLink: {
+    color: '#FDA172',
+    fontWeight: '500',
+    textDecorationLine: 'underline',
+  },
   signupButton: {
     backgroundColor: '#FDA172',
     padding: 15,
     borderRadius: 10,
-    marginTop: 20,
+    marginTop: 10,
     alignItems: 'center',
+  },
+  signupButtonDisabled: {
+    backgroundColor: '#ccc',
   },
   signupButtonText: {
     color: '#fff',

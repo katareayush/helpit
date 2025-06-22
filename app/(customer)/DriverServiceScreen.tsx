@@ -9,7 +9,9 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
-  ScrollView
+  ScrollView,
+  Dimensions,
+  StatusBar as RNStatusBar
 } from 'react-native';
 import { ArrowLeft, MapPin, User, Car } from 'lucide-react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -18,28 +20,93 @@ import CustomTabBar from '../../components/CustomTabBar';
 import { API_BASE_URL } from '../../lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
+import axios from 'axios';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
+// Define types
+interface Coordinates {
+  latitude: number;
+  longitude: number;
+}
+
+// Backend expects coordinates in specific format for estimate-distance endpoint
+interface LocationWithCoordinates {
+  latitude: number;
+  longitude: number;
+}
+
+interface Service {
+  _id: string;
+  name: string;
+  baseCharge: number;
+  unitType: string;
+  commissionPercentage: number;
+  isActive: boolean;
+  description?: string;
+  serviceImage?: string;
+}
+
+interface EstimateDistanceRequest {
+  pickup_location: LocationWithCoordinates;
+  drop_location: LocationWithCoordinates;
+}
+
+interface CalculateFareRequest {
+  serviceId: string;
+  distance: number;
+  vehicleType: string;
+}
+
+interface BookingDetails {
+  pickupAddress: string;
+  destination: string;
+  passengers: string;
+  vehicleType: string;
+}
+
+interface BookingRequest {
+  serviceId: string;
+  details: BookingDetails;
+  userLocation: Coordinates;
+  estimatedDistance: number;
+  duration: number;
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  message?: string;
+  data?: T;
+}
 
 export default function DriverServiceScreen() {
   const router = useRouter();
-  const [pickupAddress, setPickupAddress] = useState('');
-  const [destination, setDestination] = useState('');
-  const [passengers, setPassengers] = useState('1 person');
-  const [vehicleType, setVehicleType] = useState('Sedan (up to 4 people)');
-  const [showPassengerDropdown, setShowPassengerDropdown] = useState(false);
-  const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
-  const [estimatedDistance, setEstimatedDistance] = useState('0 KM');
-  const [estimatedFare, setEstimatedFare] = useState('₹0');
-  const [serviceId, setServiceId] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [pickupCoordinates, setPickupCoordinates] = useState(null);
-  const [destinationCoordinates, setDestinationCoordinates] = useState(null);
+  const [pickupAddress, setPickupAddress] = useState<string>('');
+  const [destination, setDestination] = useState<string>('');
+  const [passengers, setPassengers] = useState<string>('1 person');
+  const [vehicleType, setVehicleType] = useState<string>('Sedan (up to 4 people)');
+  const [showPassengerDropdown, setShowPassengerDropdown] = useState<boolean>(false);
+  const [showVehicleDropdown, setShowVehicleDropdown] = useState<boolean>(false);
+  const [estimatedDistance, setEstimatedDistance] = useState<string>('0 KM');
+  const [estimatedFare, setEstimatedFare] = useState<string>('₹0');
+  const [serviceId, setServiceId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isServiceLoading, setIsServiceLoading] = useState<boolean>(true);
+  const [pickupCoordinates, setPickupCoordinates] = useState<Coordinates | null>(null);
+  const [destinationCoordinates, setDestinationCoordinates] = useState<Coordinates | null>(null);
 
-  const passengerOptions = ['1 person', '2 people', '3 people', '4 people'];
-  const vehicleOptions = [
+  const passengerOptions: string[] = ['1 person', '2 people', '3 people', '4 people'];
+  const vehicleOptions: string[] = [
     'Sedan (up to 4 people)',
     'SUV (up to 6 people)',
     'Luxury (up to 4 people)',
   ];
+
+  // Responsive values
+  const isSmallScreen = screenWidth < 375;
+  const horizontalPadding = isSmallScreen ? 16 : 20;
+  const fontSize = isSmallScreen ? 14 : 16;
+  const buttonPadding = isSmallScreen ? 12 : 16;
 
   // Ask for location permission when component mounts
   useEffect(() => {
@@ -61,38 +128,38 @@ export default function DriverServiceScreen() {
   useEffect(() => {
     const fetchServiceId = async () => {
       try {
-        setIsLoading(true);
+        setIsServiceLoading(true);
         const token = await AsyncStorage.getItem('accessToken');
         if (!token) {
           Alert.alert('Authentication Required', 'Please log in.');
-          router.push('/auth/login');
+          router.push('/(auth)/signInC');
           return;
         }
 
-        const response = await fetch(`${API_BASE_URL}/services`, {
+        const response = await axios.get<ApiResponse<Service[]>>(`${API_BASE_URL}/services`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
-        const result = await response.json();
 
-        if (response.ok && result.data) {
-          const driverService = result.data.find(
+        if (response.data && response.data.success) {
+          const driverService = response.data.data?.find(
             (service) => service.name.toLowerCase() === 'driver' || service.unitType === 'KM'
           );
+          
           if (driverService) {
             setServiceId(driverService._id);
           } else {
             Alert.alert('Error', 'Driver service not found.');
           }
         } else {
-          Alert.alert('Error', result.message || 'Failed to fetch services.');
+          Alert.alert('Error', response.data?.message || 'Failed to fetch services.');
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Service fetch error:', error);
-        Alert.alert('Error', error.message || 'An error occurred while fetching services.');
+        Alert.alert('Error', error.response?.data?.message || 'An error occurred while fetching services.');
       } finally {
-        setIsLoading(false);
+        setIsServiceLoading(false);
       }
     };
 
@@ -100,7 +167,7 @@ export default function DriverServiceScreen() {
   }, []);
 
   // Get user's current location for pickup
-  const getMyCurrentLocation = async () => {
+  const getMyCurrentLocation = async (): Promise<void> => {
     try {
       setIsLoading(true);
 
@@ -168,14 +235,14 @@ export default function DriverServiceScreen() {
       }
     } catch (error) {
       console.error('Location error:', error);
-      Alert.alert('Error', 'Failed to get your current location');
+      Alert.alert('Error', 'Could not determine your location');
     } finally {
       setIsLoading(false);
     }
   };
 
   // Geocode the destination address to get coordinates
-  const geocodeDestination = async () => {
+  const geocodeDestination = async (): Promise<boolean> => {
     if (!destination.trim()) {
       Alert.alert('Error', 'Please enter a destination address');
       return false;
@@ -202,8 +269,19 @@ export default function DriverServiceScreen() {
     }
   };
 
-  // Calculate distance between pickup and destination
-  const calculateDistance = async () => {
+  // Calculate distance between pickup and destination and then calculate fare using backend API
+  const calculateDistance = async (): Promise<void> => {
+    // Check if service is still loading
+    if (isServiceLoading) {
+      Alert.alert('Please wait', 'Loading service information...');
+      return;
+    }
+
+    if (!serviceId) {
+      Alert.alert('Error', 'Service not available. Please try refreshing the page.');
+      return;
+    }
+
     if (!pickupAddress) {
       Alert.alert('Error', 'Please set your pickup location');
       return;
@@ -214,21 +292,6 @@ export default function DriverServiceScreen() {
       return;
     }
 
-    // If destination coordinates are not set, try to geocode the destination
-    if (!destinationCoordinates) {
-      const success = await geocodeDestination();
-      if (!success) return;
-    }
-
-    // If pickup coordinates are not set, try to get current location
-    if (!pickupCoordinates) {
-      await getMyCurrentLocation();
-      if (!pickupCoordinates) {
-        Alert.alert('Error', 'Could not determine your pickup location');
-        return;
-      }
-    }
-
     try {
       setIsLoading(true);
 
@@ -236,106 +299,148 @@ export default function DriverServiceScreen() {
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) {
         Alert.alert('Authentication Required', 'Please log in.');
-        router.push('/auth/login');
+        router.push('/(auth)/signInC');
         return;
       }
 
-      // Calculate distance using estimate-distance endpoint
-      const response = await fetch(`${API_BASE_URL}/estimate-distance`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+      // IMPORTANT FIX: Always geocode destination on calculate
+      // This ensures we have fresh coordinates every time
+      const success = await geocodeDestination();
+      if (!success) {
+        return; // geocodeDestination already shows an error alert
+      }
+
+      // Make sure we have pickup coordinates
+      if (!pickupCoordinates) {
+        await getMyCurrentLocation();
+        if (!pickupCoordinates) {
+          Alert.alert('Error', 'Could not determine your pickup location');
+          return;
+        }
+      }
+
+      // Now that we've ensured both coordinates are available, proceed with calculation
+      const requestData: EstimateDistanceRequest = {
+        pickup_location: {
+          latitude: pickupCoordinates.latitude,
+          longitude: pickupCoordinates.longitude
         },
-        body: JSON.stringify({
-          pickup_location: pickupCoordinates,
-          drop_location: destinationCoordinates,
-        }),
-      });
+        drop_location: {
+          latitude: destinationCoordinates.latitude,
+          longitude: destinationCoordinates.longitude
+        }
+      };
+      
+      interface DistanceResponse {
+        estimatedDistance: number;
+        unit: string;
+        pickupLocation: LocationWithCoordinates;
+        dropLocation: LocationWithCoordinates;
+      }
 
-      const result = await response.json();
+      const response = await axios.post<ApiResponse<DistanceResponse>>(
+        `${API_BASE_URL}/estimate-distance`,
+        requestData,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
 
-      if (response.ok && result.data) {
-        const distance = result.data.estimatedDistance || 0;
+      if (response.data && response.data.success && response.data.data) {
+        const distance = response.data.data.estimatedDistance || 0;
         setEstimatedDistance(`${distance} KM`);
         
-        // After getting distance, calculate the fare
-        const fareResponse = await fetch(`${API_BASE_URL}/calculate-fare`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
+        // After getting distance, calculate the fare using backend API
+        try {
+          interface FareResponse {
+            fare: number;
+            baseCharge: number;
+            distance: number;
+            vehicleType: string;
+          }
+
+          const fareRequestData: CalculateFareRequest = {
             serviceId: serviceId,
             distance: distance,
             vehicleType: vehicleType
-          }),
-        });
-        
-        const fareResult = await fareResponse.json();
-        
-        if (fareResponse.ok && fareResult.data) {
-          setEstimatedFare(`₹${fareResult.data.fare}`);
-        } else {
-          // Fallback to client-side calculation if API endpoint doesn't exist yet
-          calculateFareLocally(distance);
+          };
+
+          const fareResponse = await axios.post<ApiResponse<FareResponse>>(
+            `${API_BASE_URL}/calculate-fare`,
+            fareRequestData,
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            }
+          );
+          
+          if (fareResponse.data && fareResponse.data.success && fareResponse.data.data) {
+            setEstimatedFare(`₹${Math.round(fareResponse.data.data.fare)}`);
+          } else {
+            throw new Error(fareResponse.data?.message || 'Could not calculate fare');
+          }
+        } catch (fareError: any) {
+          console.error('Fare calculation error:', fareError);
+          Alert.alert('Error', fareError.response?.data?.message || 'Failed to calculate fare');
         }
       } else {
-        throw new Error(result.message || 'Could not calculate distance');
+        throw new Error(response.data?.message || 'Could not calculate distance');
       }
-    } catch (error) {
-      console.error('Distance/fare calculation error:', error);
-      
-      // If the server-side fare calculation fails, fall back to client-side
-      if (error.message.includes('404') || error.message.includes('Not Found')) {
-        const distance = parseFloat(estimatedDistance.replace(' KM', ''));
-        if (!isNaN(distance)) {
-          calculateFareLocally(distance);
-        } else {
-          Alert.alert('Error', 'Failed to calculate fare. Please try again.');
-        }
-      } else {
-        Alert.alert('Error', 'Failed to calculate distance and fare.');
-      }
+    } catch (error: any) {
+      console.error('Distance calculation error:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to calculate distance');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Fallback local fare calculation (until server endpoint is implemented)
-  const calculateFareLocally = (distance) => {
-    try {
-      // Vehicle type multipliers
-      let multiplier = 1;
-      if (vehicleType.includes('SUV')) {
-        multiplier = 1.5; // 50% higher for SUV
-      } else if (vehicleType.includes('Luxury')) {
-        multiplier = 2.0; // 100% higher for luxury vehicles
+  // Handle vehicle type change and recalculate fare if distance is already calculated
+  const handleVehicleTypeChange = async (newVehicleType: string) => {
+    setVehicleType(newVehicleType);
+    setShowVehicleDropdown(false);
+    
+    // If we already have distance calculated and service is available, recalculate fare with new vehicle type
+    if (estimatedDistance !== '0 KM' && serviceId) {
+      try {
+        const token = await AsyncStorage.getItem('accessToken');
+        if (!token) return;
+
+        const numericDistance = parseFloat(estimatedDistance.replace(' KM', ''));
+        
+        const fareRequestData: CalculateFareRequest = {
+          serviceId: serviceId,
+          distance: numericDistance,
+          vehicleType: newVehicleType
+        };
+
+        const fareResponse = await axios.post<ApiResponse<{
+          fare: number;
+          baseCharge: number;
+          distance: number;
+          vehicleType: string;
+        }>>(
+          `${API_BASE_URL}/calculate-fare`,
+          fareRequestData,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+        
+        if (fareResponse.data && fareResponse.data.success && fareResponse.data.data) {
+          setEstimatedFare(`₹${Math.round(fareResponse.data.data.fare)}`);
+        }
+      } catch (error) {
+        console.error('Fare recalculation error:', error);
       }
-
-      // Base rate (you should get this from your service config)
-      const baseRate = 50; // ₹50 per km
-
-      // Calculate fare
-      let fare = distance * baseRate * multiplier;
-
-      // Minimum fare
-      const minimumFare = 100;
-      fare = Math.max(fare, minimumFare);
-
-      // Round to nearest integer
-      fare = Math.round(fare);
-
-      // Update state
-      setEstimatedFare(`₹${fare}`);
-    } catch (error) {
-      console.error('Local fare calculation error:', error);
-      Alert.alert('Error', 'Failed to calculate fare.');
     }
   };
 
-  const handleBookDriver = async () => {
+  const handleBookDriver = async (): Promise<void> => {
     if (!serviceId) {
       Alert.alert('Error', 'Service ID is not available.');
       return;
@@ -361,57 +466,68 @@ export default function DriverServiceScreen() {
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) {
         Alert.alert('Authentication Required', 'Please log in.');
-        router.push('/auth/login');
+        router.push('/(auth)/signInC');
         return;
       }
 
-      // Extract numeric fare
-      const numericFare = parseFloat(estimatedFare.replace('₹', ''));
+      // Extract numeric distance
       const numericDistance = parseFloat(estimatedDistance.replace(' KM', ''));
 
-      // Use the correct API endpoint from the route definition
-      const response = await fetch(`${API_BASE_URL}/booking/book`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+      // Prepare request data - this matches the API expected format
+      const bookingData: BookingRequest = {
+        serviceId,
+        details: {
+          pickupAddress,
+          destination,
+          passengers,
+          vehicleType,
         },
-        body: JSON.stringify({
-          serviceId,
-          details: {
-            pickupAddress,
-            destination,
-            passengers,
-            vehicleType,
-          },
-          userLocation: pickupCoordinates,
-          estimatedDistance: numericDistance,
-          duration: 30, // Default duration in minutes
-        }),
-      });
+        userLocation: pickupCoordinates!,
+        estimatedDistance: numericDistance,
+        duration: 30, // Default duration in minutes
+      };
 
-      const result = await response.json();
-      if (response.ok) {
+      // Use axios to make the booking API request
+      interface BookingResponse {
+        bookingId: string;
+        booking: {
+          _id: string;
+          status: string;
+          estimatedFare: number;
+        };
+      }
+
+      const response = await axios.post<ApiResponse<BookingResponse>>(
+        `${API_BASE_URL}/booking/book`,
+        bookingData,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (response.data && response.data.success) {
         Alert.alert(
           'Success',
           'Driver booking request submitted! Waiting for a driver to accept.',
           [
             {
               text: 'View Bookings',
-              onPress: () => router.push('/booking/user')
+              onPress: () => router.push('/(customer)/MyBookingScreen')
             },
             {
               text: 'OK',
-              onPress: () => router.push('/Home')
+              onPress: () => router.push('/')
             }
           ]
         );
       } else {
-        throw new Error(result.message || 'Booking failed');
+        throw new Error(response.data?.message || 'Booking failed');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Booking error:', error);
-      Alert.alert('Error', error.message || 'An error occurred while booking the driver');
+      Alert.alert('Error', error.response?.data?.message || error.message || 'An error occurred while booking the driver');
     } finally {
       setIsLoading(false);
     }
@@ -420,15 +536,21 @@ export default function DriverServiceScreen() {
   return (
     <>
       <StatusBar style="dark" />
-      <SafeAreaView className="flex-1 bg-white">
+      <SafeAreaView className="flex-1 bg-white" style={{
+        paddingTop: Platform.OS === 'android' ? RNStatusBar.currentHeight : 0
+      }}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
           className="flex-1"
         >
-          <ScrollView>
+          <ScrollView 
+            contentContainerStyle={{ paddingBottom: 100 }}
+            showsVerticalScrollIndicator={false}
+          >
             {/* Header */}
-            <View className="flex-row items-center justify-between px-5 py-4 border-b border-gray-200">
+            <View className="flex-row items-center justify-between border-b border-gray-200" 
+                  style={{ paddingHorizontal: horizontalPadding, paddingVertical: buttonPadding }}>
               <TouchableOpacity onPress={() => router.back()}>
                 <ArrowLeft size={24} color="#000" />
               </TouchableOpacity>
@@ -438,23 +560,30 @@ export default function DriverServiceScreen() {
               <View style={{ width: 24 }} />
             </View>
 
-            <View className="p-5">
+            <View style={{ padding: horizontalPadding }}>
               {/* Pickup Location */}
-              <View className="mb-5">
+              <View style={{ marginBottom: horizontalPadding }}>
                 <View className="flex-row items-center mb-2">
                   <MapPin size={20} color="#4CAF50" />
-                  <Text className="ml-2 text-base font-medium text-black">
+                  <Text className="ml-2 font-medium text-black" style={{ fontSize }}>
                     Pickup Location
                   </Text>
                 </View>
                 <TextInput
-                  className="border border-gray-300 rounded-lg p-3 text-base"
+                  className="border border-gray-300 rounded-lg text-base"
+                  style={{ 
+                    padding: buttonPadding, 
+                    fontSize,
+                    minHeight: 48
+                  }}
                   placeholder="Enter your pickup address"
                   value={pickupAddress}
                   onChangeText={setPickupAddress}
+                  multiline={false}
                 />
                 <TouchableOpacity
-                  className="mt-2 flex-row items-center bg-gray-100 p-2 rounded-lg"
+                  className="mt-2 flex-row items-center bg-gray-100 rounded-lg"
+                  style={{ padding: buttonPadding / 2 }}
                   onPress={getMyCurrentLocation}
                 >
                   <MapPin size={16} color="#4CAF50" />
@@ -465,50 +594,72 @@ export default function DriverServiceScreen() {
               </View>
 
               {/* Destination */}
-              <View className="mb-5">
+              <View style={{ marginBottom: horizontalPadding }}>
                 <View className="flex-row items-center mb-2">
                   <MapPin size={20} color="#F44336" />
-                  <Text className="ml-2 text-base font-medium text-black">
+                  <Text className="ml-2 font-medium text-black" style={{ fontSize }}>
                     Destination
                   </Text>
                 </View>
                 <TextInput
-                  className="border border-gray-300 rounded-lg p-3 text-base"
+                  className="border border-gray-300 rounded-lg text-base"
+                  style={{ 
+                    padding: buttonPadding, 
+                    fontSize,
+                    minHeight: 48
+                  }}
                   placeholder="Enter your destination"
                   value={destination}
                   onChangeText={setDestination}
+                  multiline={false}
                 />
               </View>
 
               {/* Passengers */}
-              <View className="mb-5">
+              <View style={{ marginBottom: horizontalPadding }}>
                 <View className="flex-row items-center mb-2">
                   <User size={20} color="#000" />
-                  <Text className="ml-2 text-base font-medium text-black">
+                  <Text className="ml-2 font-medium text-black" style={{ fontSize }}>
                     Passengers
                   </Text>
                 </View>
                 <TouchableOpacity
-                  className="border border-gray-300 rounded-lg p-3 flex-row justify-between items-center"
+                  className="border border-gray-300 rounded-lg flex-row justify-between items-center"
+                  style={{ 
+                    padding: buttonPadding, 
+                    minHeight: 48
+                  }}
                   onPress={() =>
                     setShowPassengerDropdown(!showPassengerDropdown)
                   }
                 >
-                  <Text>{passengers}</Text>
+                  <Text style={{ fontSize }}>{passengers}</Text>
                   <Text className="text-gray-500">∨</Text>
                 </TouchableOpacity>
                 {showPassengerDropdown && (
-                  <View className="border border-gray-200 rounded-lg mt-1 bg-white">
+                  <View className="border border-gray-200 rounded-lg mt-1 bg-white" style={{ 
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    zIndex: 1000,
+                    elevation: 5,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.25,
+                    shadowRadius: 3.84
+                  }}>
                     {passengerOptions.map((item) => (
                       <TouchableOpacity
                         key={item}
-                        className="p-3 border-b border-gray-200"
+                        className="border-b border-gray-200"
+                        style={{ padding: buttonPadding }}
                         onPress={() => {
                           setPassengers(item);
                           setShowPassengerDropdown(false);
                         }}
                       >
-                        <Text>{item}</Text>
+                        <Text style={{ fontSize }}>{item}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -516,41 +667,47 @@ export default function DriverServiceScreen() {
               </View>
 
               {/* Vehicle Type */}
-              <View className="mb-5">
+              <View style={{ marginBottom: horizontalPadding }}>
                 <View className="flex-row items-center mb-2">
                   <Car size={20} color="#000" />
-                  <Text className="ml-2 text-base font-medium text-black">
+                  <Text className="ml-2 font-medium text-black" style={{ fontSize }}>
                     Vehicle Type
                   </Text>
                 </View>
                 <TouchableOpacity
-                  className="border border-gray-300 rounded-lg p-3 flex-row justify-between items-center"
+                  className="border border-gray-300 rounded-lg flex-row justify-between items-center"
+                  style={{ 
+                    padding: buttonPadding, 
+                    minHeight: 48
+                  }}
                   onPress={() =>
                     setShowVehicleDropdown(!showVehicleDropdown)
                   }
                 >
-                  <Text>{vehicleType}</Text>
+                  <Text style={{ fontSize, flex: 1 }} numberOfLines={1}>{vehicleType}</Text>
                   <Text className="text-gray-500">∨</Text>
                 </TouchableOpacity>
                 {showVehicleDropdown && (
-                  <View className="border border-gray-200 rounded-lg mt-1 bg-white">
+                  <View className="border border-gray-200 rounded-lg mt-1 bg-white" style={{ 
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    zIndex: 1000,
+                    elevation: 5,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.25,
+                    shadowRadius: 3.84
+                  }}>
                     {vehicleOptions.map((item) => (
                       <TouchableOpacity
                         key={item}
-                        className="p-3 border-b border-gray-200"
-                        onPress={() => {
-                          setVehicleType(item);
-                          setShowVehicleDropdown(false);
-                          // Recalculate fare if distance is already calculated
-                          if (estimatedDistance !== '0 KM') {
-                            const distance = parseFloat(estimatedDistance.replace(' KM', ''));
-                            if (!isNaN(distance)) {
-                              calculateFareLocally(distance);
-                            }
-                          }
-                        }}
+                        className="border-b border-gray-200"
+                        style={{ padding: buttonPadding }}
+                        onPress={() => handleVehicleTypeChange(item)}
                       >
-                        <Text>{item}</Text>
+                        <Text style={{ fontSize }}>{item}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -558,12 +715,13 @@ export default function DriverServiceScreen() {
               </View>
 
               {/* Fare Estimate */}
-              <View className="border border-yellow-400 rounded-lg p-4 bg-yellow-50 mb-6">
+              <View className="border border-yellow-400 rounded-lg bg-yellow-50" 
+                   style={{ padding: buttonPadding, marginBottom: horizontalPadding * 1.5 }}>
                 <View className="flex-row justify-between items-center mb-2">
                   <Text className="text-sm text-gray-600">
                     Estimated Distance:
                   </Text>
-                  <Text className="text-base font-medium text-black">
+                  <Text className="font-medium text-black" style={{ fontSize }}>
                     {estimatedDistance}
                   </Text>
                 </View>
@@ -576,15 +734,19 @@ export default function DriverServiceScreen() {
                   </Text>
                 </View>
                 <TouchableOpacity
-                  className="mt-3 bg-green-500 rounded-lg p-3 items-center"
+                  className={`mt-3 bg-green-500 rounded-lg items-center ${isServiceLoading || isLoading ? 'opacity-70' : ''}`}
+                  style={{ 
+                    padding: buttonPadding,
+                    minHeight: 48
+                  }}
                   onPress={calculateDistance}
-                  disabled={isLoading}
+                  disabled={isServiceLoading || isLoading}
                 >
-                  {isLoading ? (
+                  {isLoading || isServiceLoading ? (
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
-                    <Text className="text-white text-base font-medium">
-                      Calculate Fare
+                    <Text className="text-white font-medium" style={{ fontSize }}>
+                      {isServiceLoading ? 'Loading Service...' : 'Calculate Fare'}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -592,9 +754,13 @@ export default function DriverServiceScreen() {
 
               {/* Book Driver Button */}
               <TouchableOpacity
-                className={`bg-orange-500 rounded-lg p-4 items-center ${isLoading || estimatedDistance === '0 KM' ? 'opacity-70' : ''}`}
+                className={`bg-orange-500 rounded-lg items-center ${isLoading || estimatedDistance === '0 KM' || isServiceLoading ? 'opacity-70' : ''}`}
+                style={{ 
+                  padding: buttonPadding,
+                  minHeight: 52
+                }}
                 onPress={handleBookDriver}
-                disabled={isLoading || estimatedDistance === '0 KM'}
+                disabled={isLoading || estimatedDistance === '0 KM' || isServiceLoading}
               >
                 {isLoading ? (
                   <ActivityIndicator color="#fff" size="small" />

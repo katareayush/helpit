@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-  Platform,
   Vibration
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,10 +18,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { AuthContext } from '../_layout';
 import { API_BASE_URL } from '@/lib/api';
-import { io, Socket } from 'socket.io-client';
-import { useBooking } from '../../components/BookingContext'; // Import the booking context hook
-
-const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_BASE_URL;
+import { useBooking } from '../../components/BookingContext';
+import Toast from 'react-native-toast-message';
+import BookingPopup from '../../components/BookingPopup';
 
 interface Booking {
   _id: string;
@@ -34,64 +32,58 @@ interface Booking {
     _id: string;
     name: string;
   };
-  details: string;
+  details: string | {
+    location?: string;
+    locationCoordinates?: any;
+    date?: string;
+    time?: string;
+    duration?: number;
+    pickupAddress?: string;
+    destination?: string;
+    passengers?: number;
+    vehicleType?: string;
+    [key: string]: any;
+  };
   status: 'PENDING' | 'ACCEPTED' | 'COMPLETED' | 'CANCELLED';
   estimatedFare: number;
   createdAt: string;
-}
-
-interface ServiceGroup {
-  service: {
-    _id: string;
-    name: string;
-    isActive: boolean;
-  };
-  bookingData: Booking[];
-}
-
-interface ProfileData {
-  name: string;
-  isAvailable: boolean;
-  isNotificationOn: boolean;
-  phoneNumber: string;
-  currentLocation?: {
-    type: string;
-    coordinates: [number, number]; // [longitude, latitude]
+  serviceDate?: string;
+  bookingHours?: {
+    startTime: string;
+    endTime: string;
+    endDate: string;
+    totalNoofHours: number;
   };
 }
 
 const Dashboard: React.FC = () => {
   const router = useRouter();
   const { setAuthState } = useContext(AuthContext);
-  const { setIncomingBooking } = useBooking(); // Get the setIncomingBooking function from context
+  const {
+    setIncomingBooking,
+    isAvailable,
+    setAvailability,
+    isLoadingAvailability,
+    socketConnected,
+    getSocket
+  } = useBooking();
+
   const [activeTab, setActiveTab] = useState<'pending' | 'active' | 'completed'>('pending');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [locationPermission, setLocationPermission] = useState<boolean>(false);
-  const locationUpdateInterval = useRef<NodeJS.Timeout | null>(null);
-  const socketRef = useRef<Socket | null>(null);
-
   const [pendingBookings, setPendingBookings] = useState<Booking[]>([]);
   const [acceptedBookings, setAcceptedBookings] = useState<Booking[]>([]);
   const [completedBookings, setCompletedBookings] = useState<Booking[]>([]);
-  const [profile, setProfile] = useState<ProfileData>({
-    name: 'Service Provider',
-    isAvailable: false,
-    isNotificationOn: true,
-    phoneNumber: ''
-  });
+  const [profileName, setProfileName] = useState('Service Provider');
 
-  // Request location permissions when component mounts
   useEffect(() => {
     let isMounted = true;
-
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
-
         if (!isMounted) return;
-
         if (status !== 'granted') {
           setLocationPermission(false);
           Alert.alert(
@@ -101,239 +93,127 @@ const Dashboard: React.FC = () => {
           );
           return;
         }
-
         setLocationPermission(true);
         await updateLocationOnServer();
-
-        // Start location tracking if available
-        if (profile.isAvailable) {
-          startLocationTracking();
-        }
       } catch (err) {
         console.error('Error requesting location permissions:', err);
+        setLocationPermission(false);
       }
     })();
-
-    // Cleanup interval on unmount
-    return () => {
-      isMounted = false;
-      if (locationUpdateInterval.current) {
-        clearInterval(locationUpdateInterval.current);
-        locationUpdateInterval.current = null;
-      }
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
-      }
-      // Unload sound if it exists
-      if (typeof sound !== 'undefined' && sound) {
-        sound.unloadAsync();
-      }
-    };
+    return () => { isMounted = false; };
   }, []);
 
   useEffect(() => {
+    const socket = getSocket();
     let isMounted = true;
 
-    const setupSocket = async () => {
-      try {
-        const token = await AsyncStorage.getItem('accessToken');
-        if (!token || !isMounted) return;
+    if (socket && socket.connected) {
+      socket.on('new_booking', (data) => {
+        if (!isMounted) return;
+        handleNewBooking(data);
+      });
 
-        // Disconnect existing socket if any
-        if (socketRef.current) {
-          socketRef.current.disconnect();
+      socket.on('new_hours_booking', (data) => {
+        if (!isMounted) return;
+        handleNewBooking(data);
+      });
+
+      socket.on('booking_removed', (data) => {
+        if (!isMounted) return;
+        setPendingBookings(prevBookings =>
+          prevBookings.filter(booking => booking._id !== data.bookingId)
+        );
+      });
+
+      socket.on('booking_cancel_by_user', (data) => {
+        if (!isMounted) return;
+        Alert.alert('Booking Cancelled', 'User has cancelled the booking');
+        setAcceptedBookings(prevBookings =>
+          prevBookings.filter(booking => booking._id !== data.bookingId)
+        );
+        fetchBookings();
+      });
+
+      socket.on('error', (error) => {
+        console.error('Socket error:', error);
+        if (error.message && (
+          error.message.includes("availability") ||
+          error.message.includes("active service") ||
+          error.message.includes("currently booked")
+        )) {
+          Alert.alert("Error", error.message);
+          fetchProfileData();
         }
-
-        // Create new socket connection
-        socketRef.current = io(SOCKET_URL, {
-          query: { token },
-          transports: ['websocket', 'polling']
-        });
-
-        // Socket connection events
-        socketRef.current.on('connect', () => {
-          console.log('Socket connected', socketRef.current?.id);
-
-          // Register as service provider
-          socketRef.current?.emit('setAvailability', {
-            isAvailable: profile.isAvailable,
-            coordinates: profile.currentLocation ? {
-              latitude: profile.currentLocation.coordinates[1],
-              longitude: profile.currentLocation.coordinates[0]
-            } : undefined
-          });
-        });
-
-        // Listen for new bookings
-        socketRef.current.on('new_booking', (data) => {
-          if (!isMounted) return;
-
-          console.log('New booking received:', data);
-          Vibration.vibrate([500, 100, 500]);
-
-          // Create booking object
-          const newBooking = {
-            _id: data.bookingId,
-            userId: data.bookingDetails.userId || { _id: '', name: 'Customer' },
-            serviceId: data.bookingDetails.serviceId || { _id: '', name: 'Service' },
-            details: data.bookingDetails.details || data.details || '',
-            status: 'PENDING' as const,
-            estimatedFare: data.estimatedFare || 0,
-            createdAt: new Date().toISOString()
-          };
-
-          // Add the new booking to pending bookings
-          setPendingBookings(prevBookings => {
-            // Check if booking already exists
-            const exists = prevBookings.some(booking => booking._id === data.bookingId);
-            if (!exists) {
-              // Send to BookingContext to show popup
-              setIncomingBooking(newBooking);
-
-              // Also add to the pending bookings list
-              return [newBooking, ...prevBookings];
-            }
-            return prevBookings;
-          });
-        });
-
-        // Listen for booking removals (when another SP accepts it)
-        socketRef.current.on('booking_removed', (data) => {
-          if (!isMounted) return;
-
-          console.log('Booking removed:', data);
-          setPendingBookings(prevBookings =>
-            prevBookings.filter(booking => booking._id !== data.bookingId)
-          );
-        });
-
-        // Listen for booking cancellations by user
-        socketRef.current.on('booking_cancel_by_user', (data) => {
-          if (!isMounted) return;
-
-          console.log('Booking cancelled by user:', data);
-          Alert.alert('Booking Cancelled', 'User has cancelled the booking');
-
-          // Move from accepted to cancelled (we don't show cancelled, so remove)
-          setAcceptedBookings(prevBookings =>
-            prevBookings.filter(booking => booking._id !== data.bookingId)
-          );
-
-          // Refresh bookings to ensure UI is updated
-          fetchBookings();
-        });
-
-        socketRef.current.on('error', (error) => {
-          console.error('Socket error:', error);
-        });
-
-        socketRef.current.on('disconnect', () => {
-          console.log('Socket disconnected');
-        });
-      } catch (error) {
-        console.error('Socket setup error:', error);
-      }
-    };
-
-    setupSocket();
+      });
+    }
 
     return () => {
       isMounted = false;
-      // Socket cleanup handled in main useEffect
+      const socket = getSocket();
+      if (socket) {
+        socket.off('new_booking');
+        socket.off('new_hours_booking');
+        socket.off('booking_removed');
+        socket.off('booking_cancel_by_user');
+        socket.off('error');
+      }
     };
-  }, [profile.isAvailable, setIncomingBooking]);
+  }, [socketConnected]);
 
-  // Start or stop location tracking when availability changes
-  useEffect(() => {
-    if (profile.isAvailable && locationPermission) {
-      startLocationTracking();
+  const handleNewBooking = (data) => {
+    console.log('New booking received:', data);
+    Vibration.vibrate([500, 100, 500]);
 
-      // Update socket availability status
-      if (socketRef.current && socketRef.current.connected) {
-        socketRef.current.emit('setAvailability', {
-          isAvailable: true,
-          coordinates: profile.currentLocation ? {
-            latitude: profile.currentLocation.coordinates[1],
-            longitude: profile.currentLocation.coordinates[0]
-          } : undefined
-        });
+    const newBooking = {
+      _id: data.bookingId,
+      userId: data.bookingDetails?.userId || data.userId || { _id: '', name: 'Customer' },
+      serviceId: data.bookingDetails?.serviceId || data.serviceId || { _id: '', name: 'Service' },
+      details: data.bookingDetails?.details || data.details || '',
+      status: 'PENDING' as const,
+      estimatedFare: data.estimatedFare || 0,
+      createdAt: new Date().toISOString(),
+      ...(data.serviceDate && { serviceDate: data.serviceDate }),
+      ...(data.bookingHours && { bookingHours: data.bookingHours })
+    };
+
+    setPendingBookings(prevBookings => {
+      const exists = prevBookings.some(booking => booking._id === data.bookingId);
+      if (!exists) {
+        setIncomingBooking(newBooking);
+        return [newBooking, ...prevBookings];
       }
-    } else if (locationUpdateInterval.current) {
-      clearInterval(locationUpdateInterval.current);
-      locationUpdateInterval.current = null;
-
-      // Update socket availability status
-      if (socketRef.current && socketRef.current.connected) {
-        socketRef.current.emit('setAvailability', {
-          isAvailable: false
-        });
-      }
-    }
-
-    // No need for cleanup here as it's handled in the main useEffect
-  }, [profile.isAvailable, locationPermission]);
+      return prevBookings;
+    });
+  };
 
   useEffect(() => {
     loadInitialData();
   }, []);
 
-  const startLocationTracking = () => {
-    // Clear any existing interval
-    if (locationUpdateInterval.current) {
-      clearInterval(locationUpdateInterval.current);
-    }
-
-    // Update location immediately
-    updateLocationOnServer();
-
-    // Then set interval to update every 5 minutes (adjust as needed)
-    locationUpdateInterval.current = setInterval(updateLocationOnServer, 5 * 60 * 1000);
-  };
-
   const updateLocationOnServer = async () => {
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('Location permission denied');
-        return;
-      }
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== 'granted') return;
 
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced
-      });
+      }).catch(() => null);
+
+      if (!location) return;
 
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) throw new Error('No authentication token found');
 
-      // Format location data for the API
-      // The backend expects { currentLocation: { lat: number, long: number } }
       await axios.put(
         `${API_BASE_URL}/service-provider/`,
         {
           currentLocation: {
-            lat: location.coords.latitude,
-            long: location.coords.longitude
+            lat: 25.45,
+            long: 78.54
           }
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
-      console.log('Location updated on server:', {
-        lat: location.coords.latitude,
-        long: location.coords.longitude
-      });
-
-      // Also update socket with location if available
-      if (socketRef.current && socketRef.current.connected) {
-        socketRef.current.emit('setAvailability', {
-          isAvailable: profile.isAvailable,
-          coordinates: {
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude
-          }
-        });
-      }
     } catch (err) {
       console.error('Failed to update location on server:', err);
     }
@@ -342,13 +222,9 @@ const Dashboard: React.FC = () => {
   const loadInitialData = async () => {
     setIsLoading(true);
     setError(null);
-
     try {
-      await Promise.all([
-        fetchProfileData(),
-        fetchBookings(),
-        updateLocationOnServer()
-      ]);
+      await Promise.all([fetchProfileData(), fetchBookings()]);
+      updateLocationOnServer().catch(err => console.error("Location update error:", err));
     } catch (err) {
       console.error("Failed to load initial data:", err);
       setError("Failed to load data. Pull down to refresh.");
@@ -360,13 +236,9 @@ const Dashboard: React.FC = () => {
   const onRefresh = async () => {
     setIsRefreshing(true);
     setError(null);
-
     try {
-      await Promise.all([
-        fetchProfileData(),
-        fetchBookings(),
-        updateLocationOnServer()
-      ]);
+      await Promise.all([fetchProfileData(), fetchBookings()]);
+      updateLocationOnServer().catch(err => console.error("Location update error:", err));
     } catch (err) {
       console.error("Refresh failed:", err);
       setError("Failed to refresh data. Try again.");
@@ -378,32 +250,21 @@ const Dashboard: React.FC = () => {
   const fetchProfileData = async () => {
     try {
       const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
+      if (!token) throw new Error('No authentication token found');
 
       const response = await axios.get(`${API_BASE_URL}/service-provider/self-identification`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      if (response.data && response.data.data) {
+      if (response.data?.data) {
         const profileData = response.data.data;
-
-        setProfile({
-          name: profileData.name || 'Service Provider',
-          isAvailable: profileData.isAvailable || false,
-          isNotificationOn: profileData.isNotificationOn || true,
-          phoneNumber: profileData.phoneNumber || '',
-          currentLocation: profileData.currentLocation
-        });
+        setProfileName(profileData.name || 'Service Provider');
       }
     } catch (error: any) {
       console.error("Error fetching profile:", error);
-
       if (error.response?.status === 401) {
         await handleAuthError();
       }
-
       throw error;
     }
   };
@@ -411,45 +272,32 @@ const Dashboard: React.FC = () => {
   const fetchBookings = async () => {
     try {
       const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
+      if (!token) throw new Error('No authentication token found');
 
       const response = await axios.get(`${API_BASE_URL}/booking/service-provider`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      if (response.data && response.data.data && response.data.data.bookings) {
-        const serviceGroups: ServiceGroup[] = response.data.data.bookings;
-
-        // Flatten all bookings from service groups
+      if (response.data?.data?.bookings) {
         let allBookings: Booking[] = [];
-        serviceGroups.forEach(group => {
+        response.data.data.bookings.forEach(group => {
           allBookings = [...allBookings, ...group.bookingData];
         });
 
-        // Filter bookings by status
-        const pending = allBookings.filter(booking => booking.status === 'PENDING');
-        const accepted = allBookings.filter(booking => booking.status === 'ACCEPTED');
-        const completed = allBookings.filter(booking => booking.status === 'COMPLETED');
-
-        setPendingBookings(pending);
-        setAcceptedBookings(accepted);
-        setCompletedBookings(completed);
+        setPendingBookings(allBookings.filter(booking => booking.status === 'PENDING'));
+        setAcceptedBookings(allBookings.filter(booking => booking.status === 'ACCEPTED'));
+        setCompletedBookings(allBookings.filter(booking => booking.status === 'COMPLETED'));
       }
     } catch (error: any) {
       console.error("Error fetching bookings:", error);
-
       if (error.response?.status === 401) {
         await handleAuthError();
       }
-
       throw error;
     }
   };
 
   const handleAuthError = async () => {
-    // Clear tokens and redirect to login
     await AsyncStorage.multiRemove(['accessToken', 'userRole', 'userData']);
     setAuthState(false, '');
     Alert.alert(
@@ -459,11 +307,32 @@ const Dashboard: React.FC = () => {
     );
   };
 
+  const handleToggleAvailability = async () => {
+    if (isLoadingAvailability) return;
+    const newStatus = !isAvailable;
+    try {
+      await setAvailability(newStatus);
+      Toast.show({
+        type: 'success',
+        text1: newStatus ? 'You are now available' : 'You are now offline',
+        text2: newStatus ? 'You can now receive booking requests' : 'You will not receive new booking requests',
+        position: 'bottom',
+        visibilityTime: 2000
+      });
+    } catch (error) {
+      console.error('Error updating availability:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Update Failed',
+        text2: 'Could not update your availability status.',
+        position: 'bottom'
+      });
+    }
+  };
+
   const handleAcceptBooking = async (bookingId: string) => {
     try {
       setIsLoading(true);
-
-      // Check if we have location permission before accepting booking
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert(
@@ -475,9 +344,7 @@ const Dashboard: React.FC = () => {
       }
 
       const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
+      if (!token) throw new Error('No authentication token found');
 
       await axios.post(
         `${API_BASE_URL}/booking/accept`,
@@ -485,18 +352,14 @@ const Dashboard: React.FC = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // Move booking from pending to accepted immediately for better UX
       const bookingToMove = pendingBookings.find(booking => booking._id === bookingId);
       if (bookingToMove) {
-        const updatedBooking = { ...bookingToMove, status: 'ACCEPTED' };
+        const updatedBooking = { ...bookingToMove, status: 'ACCEPTED' as const };
         setPendingBookings(prev => prev.filter(booking => booking._id !== bookingId));
         setAcceptedBookings(prev => [updatedBooking, ...prev]);
       }
 
-      // Still refresh bookings after accepting to ensure data consistency
       await fetchBookings();
-
-      // Change to active tab to show the accepted booking
       setActiveTab('active');
     } catch (error: any) {
       console.error("Error accepting booking:", error);
@@ -504,7 +367,7 @@ const Dashboard: React.FC = () => {
         "Failed to Accept",
         error.response?.data?.message || "Failed to accept booking. Please try again."
       );
-      throw error; // Rethrow for the popup component to handle
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -513,11 +376,8 @@ const Dashboard: React.FC = () => {
   const handleDeclineBooking = async (bookingId: string) => {
     try {
       setIsLoading(true);
-
       const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
+      if (!token) throw new Error('No authentication token found');
 
       await axios.post(
         `${API_BASE_URL}/booking/decline`,
@@ -525,16 +385,20 @@ const Dashboard: React.FC = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // Remove declined booking from list immediately for better UX
       setPendingBookings(prev => prev.filter(booking => booking._id !== bookingId));
-
+      Toast.show({
+        type: 'success',
+        text1: 'Booking Declined',
+        text2: 'The booking request has been declined',
+        position: 'bottom',
+        visibilityTime: 2000
+      });
     } catch (error: any) {
       console.error("Error declining booking:", error);
       Alert.alert(
         "Failed to Decline",
         error.response?.data?.message || "Failed to decline booking. Please try again."
       );
-      throw error; // Rethrow for the popup component to handle
     } finally {
       setIsLoading(false);
     }
@@ -543,11 +407,8 @@ const Dashboard: React.FC = () => {
   const handleCancelBooking = async (bookingId: string) => {
     try {
       setIsLoading(true);
-
       const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
+      if (!token) throw new Error('No authentication token found');
 
       await axios.post(
         `${API_BASE_URL}/booking/cancel/service-provider`,
@@ -555,12 +416,8 @@ const Dashboard: React.FC = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // Remove cancelled booking from accepted list immediately for better UX
       setAcceptedBookings(prev => prev.filter(booking => booking._id !== bookingId));
-
-      // Still refresh bookings to ensure data consistency
       await fetchBookings();
-
       Alert.alert("Success", "Booking cancelled");
     } catch (error: any) {
       console.error("Error cancelling booking:", error);
@@ -576,11 +433,8 @@ const Dashboard: React.FC = () => {
   const handleCompleteBooking = async (bookingId: string) => {
     try {
       setIsLoading(true);
-
       const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
+      if (!token) throw new Error('No authentication token found');
 
       await axios.post(
         `${API_BASE_URL}/booking/complete`,
@@ -588,23 +442,18 @@ const Dashboard: React.FC = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // Move booking from accepted to completed immediately for better UX
       const bookingToMove = acceptedBookings.find(booking => booking._id === bookingId);
       if (bookingToMove) {
-        const updatedBooking = { ...bookingToMove, status: 'COMPLETED' };
+        const updatedBooking = { ...bookingToMove, status: 'COMPLETED' as const };
         setAcceptedBookings(prev => prev.filter(booking => booking._id !== bookingId));
         setCompletedBookings(prev => [updatedBooking, ...prev]);
       }
 
-      // Still refresh bookings to ensure data consistency
       await fetchBookings();
-
       Alert.alert(
         "Success",
         "Booking completed successfully",
-        [
-          { text: 'OK', onPress: () => setActiveTab('completed') }
-        ]
+        [{ text: 'OK', onPress: () => setActiveTab('completed') }]
       );
     } catch (error: any) {
       console.error("Error completing booking:", error);
@@ -615,67 +464,6 @@ const Dashboard: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const toggleAvailability = async () => {
-    try {
-      setIsLoading(true);
-
-      // Check location permission when toggling to available
-      if (!profile.isAvailable) {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert(
-            "Location Required",
-            "We need your location to mark you as available. Please enable location services."
-          );
-          setIsLoading(false);
-          return;
-        }
-
-        // Update location before setting availability
-        await updateLocationOnServer();
-      }
-
-      const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
-
-      // Toggle availability status
-      const newAvailability = !profile.isAvailable;
-
-      await axios.put(
-        `${API_BASE_URL}/service-provider/`,
-        { isAvailable: newAvailability },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      // Update local state
-      setProfile(prev => ({
-        ...prev,
-        isAvailable: newAvailability
-      }));
-
-      // Socket will be updated via useEffect when profile.isAvailable changes
-
-      Alert.alert(
-        "Status Updated",
-        `You are now ${newAvailability ? 'available' : 'unavailable'} for new bookings`
-      );
-    } catch (error: any) {
-      console.error("Error toggling availability:", error);
-      Alert.alert(
-        "Update Failed",
-        error.response?.data?.message || "Failed to update availability status"
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleTabChange = (tab: 'pending' | 'active' | 'completed') => {
-    setActiveTab(tab);
   };
 
   const formatDate = (dateString: string) => {
@@ -695,11 +483,65 @@ const Dashboard: React.FC = () => {
     });
   };
 
-  // Render booking card
+  const formatBookingDetails = (booking: Booking): string => {
+    const details = booking.details;
+    const parts = [];
+    
+    if (booking.serviceDate) {
+      const serviceDate = new Date(booking.serviceDate).toLocaleDateString('en-US');
+      parts.push(`Service Date: ${serviceDate}`);
+    }
+    
+    if (booking.bookingHours) {
+      if (booking.bookingHours.startTime) {
+        const startTime = new Date(booking.bookingHours.startTime).toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        parts.push(`Start Time: ${startTime}`);
+      }
+      if (booking.bookingHours.totalNoofHours) {
+        parts.push(`Duration: ${booking.bookingHours.totalNoofHours} hour(s)`);
+      }
+    }
+    
+    if (details) {
+      if (typeof details === 'string') {
+        parts.push(details);
+      } else if (typeof details === 'object') {
+        if (details.location) parts.push(`Location: ${details.location}`);
+        if (details.pickupAddress) parts.push(`Pickup: ${details.pickupAddress}`);
+        if (details.destination) parts.push(`Destination: ${details.destination}`);
+        if (details.passengers) parts.push(`Passengers: ${details.passengers}`);
+        if (details.vehicleType) parts.push(`Vehicle: ${details.vehicleType}`);
+        if (details.date) parts.push(`Date: ${details.date}`);
+        if (details.time) parts.push(`Time: ${details.time}`);
+        if (details.duration) parts.push(`Duration: ${details.duration} hour(s)`);
+        
+        const processedKeys = ['location', 'pickupAddress', 'destination', 'passengers', 'vehicleType', 'date', 'time', 'duration', 'locationCoordinates'];
+        const remainingEntries = Object.entries(details)
+          .filter(([key, value]) => 
+            !processedKeys.includes(key) && 
+            value !== null && 
+            value !== undefined && 
+            value !== ''
+          )
+          .map(([key, value]) => `${key}: ${value}`);
+        
+        if (remainingEntries.length > 0) {
+          parts.push(...remainingEntries);
+        }
+      }
+    }
+    
+    return parts.length > 0 ? parts.join(' | ') : 'No details available';
+  };
+
   const renderBookingCard = (booking: Booking) => {
     const isCompleted = booking.status === 'COMPLETED';
     const isAccepted = booking.status === 'ACCEPTED';
     const isPending = booking.status === 'PENDING';
+    const formattedDetails = formatBookingDetails(booking);
 
     return (
       <View key={booking._id} className="bg-white rounded-xl p-4 shadow-sm mb-4 border border-gray-100">
@@ -708,29 +550,46 @@ const Dashboard: React.FC = () => {
             <Ionicons name="document-text-outline" size={22} color="#FFBB84" />
             <Text className="text-lg font-medium ml-2">Booking #{booking._id.slice(-6)}</Text>
           </View>
-          <View className={`px-3 py-1 rounded-full ${isPending ? 'bg-amber-50' :
-              isAccepted ? 'bg-blue-50' :
-                isCompleted ? 'bg-green-50' : 'bg-gray-50'
+          <View className={`px-3 py-1 rounded-full ${
+            isPending ? 'bg-amber-50' :
+            isAccepted ? 'bg-blue-50' :
+            isCompleted ? 'bg-green-50' : 'bg-gray-50'
+          }`}>
+            <Text className={`text-xs font-medium ${
+              isPending ? 'text-amber-600' :
+              isAccepted ? 'text-blue-600' :
+              isCompleted ? 'text-green-600' : 'text-gray-600'
             }`}>
-            <Text className={`text-xs font-medium ${isPending ? 'text-amber-600' :
-                isAccepted ? 'text-blue-600' :
-                  isCompleted ? 'text-green-600' : 'text-gray-600'
-              }`}>
               {booking.status}
             </Text>
           </View>
         </View>
 
-        <View className="mb-3">
-          <Text className="text-sm text-gray-600">Service: {booking.serviceId?.name}</Text>
+        <View className="mb-3 space-y-2">
+          <View className="flex-row items-center">
+            <Ionicons name="person-outline" size={16} color="#666" />
+            <Text className="text-sm text-gray-600 ml-2">
+              Customer: {booking.userId?.name || 'Customer'}
+            </Text>
+          </View>
+          
+          <View className="flex-row items-center">
+            <Ionicons name="briefcase-outline" size={16} color="#666" />
+            <Text className="text-sm text-gray-600 ml-2">
+              Service: {booking.serviceId?.name || 'Service'}
+            </Text>
+          </View>
         </View>
 
-        <View className="mb-3">
-          <Text className="text-sm text-gray-600">Customer: {booking.userId?.name || 'Customer'}</Text>
-        </View>
-
-        <View className="mb-3">
-          <Text className="text-sm text-gray-600">Details: {booking.details}</Text>
+        <View className="mb-3 bg-gray-50 rounded-lg p-3">
+          <View className="flex-row items-start">
+            <Ionicons name="information-circle-outline" size={16} color="#666" className="mt-0.5" />
+            <View className="ml-2 flex-1">
+              <Text className="text-sm text-gray-700 leading-5">
+                {formattedDetails}
+              </Text>
+            </View>
+          </View>
         </View>
 
         <View className="flex-row mb-3">
@@ -749,10 +608,10 @@ const Dashboard: React.FC = () => {
         </View>
 
         <View className="flex-row justify-between items-center border-t border-gray-100 pt-3 mt-1">
+          <Text className="text-sm text-gray-600">Estimated Fare</Text>
           <Text className="text-lg font-bold text-[#FFBB84]">₹{booking.estimatedFare.toFixed(2)}</Text>
         </View>
 
-        {/* Action buttons based on booking status */}
         {isPending && (
           <View className="flex-row justify-between mt-4 space-x-2">
             <TouchableOpacity
@@ -816,34 +675,30 @@ const Dashboard: React.FC = () => {
     <>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <SafeAreaView className="flex-1 bg-gray-50">
-        {/* Top Header with availability toggle */}
         <View className="flex-row justify-between items-center px-4 py-3">
           <Text className="text-lg font-bold">Dashboard</Text>
           <TouchableOpacity
-            className={`px-4 py-2 rounded-full ${profile.isAvailable ? 'bg-green-100' : 'bg-gray-100'
-              }`}
-            onPress={toggleAvailability}
-            disabled={isLoading}
+            className={`px-4 py-2 rounded-full ${isAvailable ? 'bg-green-100' : 'bg-gray-100'}`}
+            onPress={handleToggleAvailability}
+            disabled={isLoadingAvailability}
           >
-            {isLoading ? (
-              <ActivityIndicator size="small" color={profile.isAvailable ? '#22C55E' : '#6B7280'} />
+            {isLoadingAvailability ? (
+              <ActivityIndicator size="small" color="#FFBB84" />
             ) : (
-              <Text className={profile.isAvailable ? 'text-green-600' : 'text-gray-600'}>
-                {profile.isAvailable ? '✓ Available' : '× Unavailable'}
+              <Text className={isAvailable ? 'text-green-600' : 'text-gray-600'}>
+                {isAvailable ? '✓ Available' : '× Unavailable'}
               </Text>
             )}
           </TouchableOpacity>
         </View>
 
-        {/* Welcome Section */}
         <View className="bg-[#FFBB84] mx-4 p-5 rounded-lg mb-4">
-          <Text className="text-xl font-medium text-white">Hello, {profile.name}</Text>
+          <Text className="text-xl font-medium text-white">Hello, {profileName}</Text>
           <Text className="text-sm text-white opacity-90 mt-1">
             You can view and manage your booking requests here.
           </Text>
         </View>
 
-        {/* Location Status */}
         {!locationPermission && (
           <TouchableOpacity
             className="mx-4 mb-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200 flex-row items-center"
@@ -863,14 +718,10 @@ const Dashboard: React.FC = () => {
           </TouchableOpacity>
         )}
 
-        {/* Socket Connection Status */}
-        {!socketRef.current?.connected && (
+        {!socketConnected && isAvailable && (
           <TouchableOpacity
             className="mx-4 mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 flex-row items-center"
-            onPress={() => {
-              // Attempt to reconnect socket
-              if (socketRef.current) socketRef.current.connect();
-            }}
+            onPress={onRefresh}
           >
             <Ionicons name="wifi" size={20} color="#3B82F6" />
             <Text className="ml-2 text-sm text-blue-700 flex-1">
@@ -879,10 +730,11 @@ const Dashboard: React.FC = () => {
             <Ionicons name="chevron-forward" size={16} color="#3B82F6" />
           </TouchableOpacity>
         )}
+
         <View className="flex-row justify-around bg-white mb-2 border-b border-gray-100">
           <TouchableOpacity
             className={`py-3 px-6 ${activeTab === 'pending' ? 'border-b-2 border-[#FFBB84]' : ''}`}
-            onPress={() => handleTabChange('pending')}
+            onPress={() => setActiveTab('pending')}
           >
             <Text className={`font-medium ${activeTab === 'pending' ? 'text-[#FFBB84]' : 'text-gray-500'}`}>
               Pending ({pendingBookings.length})
@@ -891,7 +743,7 @@ const Dashboard: React.FC = () => {
 
           <TouchableOpacity
             className={`py-3 px-6 ${activeTab === 'active' ? 'border-b-2 border-[#FFBB84]' : ''}`}
-            onPress={() => handleTabChange('active')}
+            onPress={() => setActiveTab('active')}
           >
             <Text className={`font-medium ${activeTab === 'active' ? 'text-[#FFBB84]' : 'text-gray-500'}`}>
               Active ({acceptedBookings.length})
@@ -900,7 +752,7 @@ const Dashboard: React.FC = () => {
 
           <TouchableOpacity
             className={`py-3 px-6 ${activeTab === 'completed' ? 'border-b-2 border-[#FFBB84]' : ''}`}
-            onPress={() => handleTabChange('completed')}
+            onPress={() => setActiveTab('completed')}
           >
             <Text className={`font-medium ${activeTab === 'completed' ? 'text-[#FFBB84]' : 'text-gray-500'}`}>
               Completed ({completedBookings.length})
@@ -908,112 +760,85 @@ const Dashboard: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Main Content */}
         <ScrollView
-          className="flex-1 px-4 pb-20"
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={onRefresh}
-              colors={['#FFBB84']}
-              tintColor="#FFBB84"
-            />
-          }
+          className="flex-1 px-4"
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
         >
-          {isLoading && !isRefreshing ? (
-            <View className="flex-1 justify-center items-center py-10">
-              <ActivityIndicator size="large" color="#FFBB84" />
-              <Text className="text-gray-500 mt-3">Loading bookings...</Text>
-            </View>
-          ) : error ? (
-            <View className="flex-1 justify-center items-center py-10">
-              <Ionicons name="alert-circle-outline" size={50} color="#DC2626" />
-              <Text className="text-red-600 mt-2">{error}</Text>
-              <TouchableOpacity
-                className="bg-[#FFBB84] px-4 py-2 rounded-lg mt-4"
-                onPress={onRefresh}
-              >
-                <Text className="text-white font-medium">Try Again</Text>
+          {error && (
+            <View className="py-4 px-3 my-4 bg-red-50 rounded-lg border border-red-100">
+              <Text className="text-red-600 text-center">{error}</Text>
+              <TouchableOpacity className="mt-2 py-2 items-center" onPress={onRefresh}>
+                <Text className="text-red-500 font-medium">Tap to retry</Text>
               </TouchableOpacity>
             </View>
-          ) : (
-            <>
-              {activeTab === 'pending' && (
-                <>
-                  {pendingBookings.length === 0 ? (
-                    <View className="flex-1 justify-center items-center py-10">
-                      <Ionicons name="time-outline" size={50} color="#9CA3AF" />
-                      <Text className="text-gray-500 mt-2">No pending bookings</Text>
-                      <Text className="text-gray-400 text-sm text-center mt-1">
-                        New booking requests will appear here
-                      </Text>
-                    </View>
-                  ) : (
-                    <>
-                      {pendingBookings.map(booking => renderBookingCard(booking))}
-                    </>
-                  )}
-                </>
-              )}
-
-              {activeTab === 'active' && (
-                <>
-                  {acceptedBookings.length === 0 ? (
-                    <View className="flex-1 justify-center items-center py-10">
-                      <Ionicons name="checkmark-circle-outline" size={50} color="#9CA3AF" />
-                      <Text className="text-gray-500 mt-2">No active bookings</Text>
-                      <Text className="text-gray-400 text-sm text-center mt-1">
-                        Bookings you accept will appear here
-                      </Text>
-                    </View>
-                  ) : (
-                    <>
-                      {acceptedBookings.map(booking => renderBookingCard(booking))}
-                    </>
-                  )}
-                </>
-              )}
-
-              {activeTab === 'completed' && (
-                <>
-                  {completedBookings.length === 0 ? (
-                    <View className="flex-1 justify-center items-center py-10">
-                      <Ionicons name="flag-outline" size={50} color="#9CA3AF" />
-                      <Text className="text-gray-500 mt-2">No completed bookings</Text>
-                      <Text className="text-gray-400 text-sm text-center mt-1">
-                        Your completed services will appear here
-                      </Text>
-                    </View>
-                  ) : (
-                    <>
-                      {completedBookings.map(booking => renderBookingCard(booking))}
-                    </>
-                  )}
-                </>
-              )}
-            </>
           )}
 
-          {/* Additional space at bottom for better scroll experience */}
-          <View className="h-20" />
+          {isLoading && !isRefreshing && (
+            <View className="py-8 items-center">
+              <ActivityIndicator size="large" color="#FFBB84" />
+              <Text className="mt-4 text-gray-500">Loading bookings...</Text>
+            </View>
+          )}
+
+          {!isLoading &&
+            ((activeTab === 'pending' && pendingBookings.length === 0) ||
+              (activeTab === 'active' && acceptedBookings.length === 0) ||
+              (activeTab === 'completed' && completedBookings.length === 0)) && (
+              <View className="py-10 items-center">
+                <Ionicons name="document-text-outline" size={48} color="#E5E7EB" />
+                <Text className="mt-4 text-gray-400 text-center">
+                  {activeTab === 'pending'
+                    ? 'No pending bookings to display'
+                    : activeTab === 'active'
+                      ? 'No active bookings at the moment'
+                      : 'No completed bookings yet'}
+                </Text>
+                {activeTab === 'pending' && !isAvailable && (
+                  <TouchableOpacity
+                    className="mt-4 py-2 px-4 rounded-full bg-orange-100"
+                    onPress={handleToggleAvailability}
+                  >
+                    <Text className="text-orange-500">Go Online to Receive Bookings</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+          {activeTab === 'pending' && pendingBookings.length > 0 && (
+            <View className="py-2">
+              {pendingBookings.map(booking => renderBookingCard(booking))}
+            </View>
+          )}
+
+          {activeTab === 'active' && acceptedBookings.length > 0 && (
+            <View className="py-2">
+              {acceptedBookings.map(booking => renderBookingCard(booking))}
+            </View>
+          )}
+
+          {activeTab === 'completed' && completedBookings.length > 0 && (
+            <View className="py-2">
+              {completedBookings.map(booking => renderBookingCard(booking))}
+            </View>
+          )}
         </ScrollView>
 
-        {/* Bottom Navigation Bar - Using your provided code */}
         <View className="absolute bottom-0 left-0 right-0 bg-white flex-row h-16 border-t border-gray-100">
-          <TouchableOpacity
-            className="flex-1 justify-center items-center"
-            onPress={() => router.push('/Dashboard')}
-          >
-            <Ionicons name="home-outline" size={24} color="#FFB74D" />
+          <TouchableOpacity className="flex-1 justify-center items-center">
+            <Ionicons name="home" size={24} color="#FFBB84" />
             <Text className="text-xs text-orange-400 mt-1">Home</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity className="flex-1 justify-center items-center"
-            onPress={() => router.push('/ProfileScreen')}>
-            <Ionicons name="person" size={24} color="#888" />
+          <TouchableOpacity
+            className="flex-1 justify-center items-center"
+            onPress={() => router.push('/ProfileScreen')}
+          >
+            <Ionicons name="person-outline" size={24} color="#888" />
             <Text className="text-xs text-gray-500 mt-1">Profile</Text>
           </TouchableOpacity>
         </View>
+
+        <BookingPopup onAccept={handleAcceptBooking} onDecline={handleDeclineBooking} />
       </SafeAreaView>
     </>
   );

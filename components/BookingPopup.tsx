@@ -8,7 +8,8 @@ import {
   Vibration,
   StyleSheet,
   Dimensions,
-  Platform
+  Platform,
+  ScrollView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useBooking } from '../components/BookingContext';
@@ -90,10 +91,79 @@ const BookingPopup: React.FC<BookingPopupProps> = ({ onAccept, onDecline }) => {
     });
   };
 
+  // Helper function to format booking details for popup
+  const formatBookingDetailsForPopup = (booking: any): string => {
+    const details = booking.details;
+    const parts = [];
+    
+    // Handle hour-based booking details
+    if (booking.serviceDate) {
+      const serviceDate = new Date(booking.serviceDate).toLocaleDateString('en-US');
+      parts.push(`Service Date: ${serviceDate}`);
+    }
+    
+    if (booking.bookingHours) {
+      if (booking.bookingHours.startTime) {
+        const startTime = new Date(booking.bookingHours.startTime).toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        parts.push(`Start Time: ${startTime}`);
+      }
+      if (booking.bookingHours.totalNoofHours) {
+        parts.push(`Duration: ${booking.bookingHours.totalNoofHours} hour(s)`);
+      }
+    }
+    
+    // Handle regular details (string or object)
+    if (details) {
+      if (typeof details === 'string') {
+        parts.push(details);
+      } else if (typeof details === 'object') {
+        // Check for common properties
+        if (details.location) parts.push(`Location: ${details.location}`);
+        if (details.pickupAddress) parts.push(`Pickup: ${details.pickupAddress}`);
+        if (details.destination) parts.push(`Destination: ${details.destination}`);
+        if (details.passengers) parts.push(`Passengers: ${details.passengers}`);
+        if (details.vehicleType) parts.push(`Vehicle: ${details.vehicleType}`);
+        
+        // If no specific properties found, try to stringify safely
+        if (parts.length === 0) {
+          try {
+            const objectDetails = Object.entries(details)
+              .map(([key, value]) => `${key}: ${value}`)
+              .join(' | ');
+            if (objectDetails) parts.push(objectDetails);
+          } catch (e) {
+            console.error('Error formatting booking details for popup:', e);
+          }
+        }
+      }
+    }
+    
+    return parts.length > 0 ? parts.join(' | ') : 'No details provided';
+  };
+
+  // Determine service icon based on service name or type
+  const getServiceIcon = () => {
+    const serviceName = incomingBooking?.serviceId?.name?.toLowerCase() || '';
+    if (serviceName.includes('driver') || serviceName.includes('ride') || serviceName.includes('taxi')) {
+      return 'car';
+    } else if (serviceName.includes('clean') || serviceName.includes('house')) {
+      return 'home';
+    } else if (serviceName.includes('repair') || serviceName.includes('fix')) {
+      return 'construct';
+    } else if (serviceName.includes('delivery') || serviceName.includes('food')) {
+      return 'bicycle';
+    }
+    return 'briefcase';
+  };
+
   if (!incomingBooking) return null;
 
   // Format price to display with appropriate currency
   const formattedPrice = `₹${incomingBooking.estimatedFare.toFixed(2)}`;
+  const formattedDetails = formatBookingDetailsForPopup(incomingBooking);
 
   return (
     <Modal
@@ -115,7 +185,7 @@ const BookingPopup: React.FC<BookingPopupProps> = ({ onAccept, onDecline }) => {
           {/* Header with service type */}
           <View style={styles.header}>
             <View style={styles.serviceIconContainer}>
-              <Ionicons name="car" size={24} color="#FFFFFF" />
+              <Ionicons name={getServiceIcon()} size={24} color="#FFFFFF" />
             </View>
             <Text style={styles.serviceTitle}>New Booking Request</Text>
             <TouchableOpacity style={styles.closeButton} onPress={dismiss}>
@@ -124,7 +194,7 @@ const BookingPopup: React.FC<BookingPopupProps> = ({ onAccept, onDecline }) => {
           </View>
 
           {/* Booking details */}
-          <View style={styles.content}>
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             <View style={styles.detailRow}>
               <Ionicons name="person-outline" size={18} color="#666" />
               <Text style={styles.detailText}>
@@ -141,8 +211,16 @@ const BookingPopup: React.FC<BookingPopupProps> = ({ onAccept, onDecline }) => {
 
             <View style={styles.detailRow}>
               <Ionicons name="document-text-outline" size={18} color="#666" />
+              <Text style={styles.detailText} numberOfLines={0}>
+                {formattedDetails}
+              </Text>
+            </View>
+
+            {/* Show booking ID for reference */}
+            <View style={styles.detailRow}>
+              <Ionicons name="finger-print-outline" size={18} color="#666" />
               <Text style={styles.detailText}>
-                {incomingBooking.details || 'No details provided'}
+                Booking #{incomingBooking._id.slice(-6)}
               </Text>
             </View>
 
@@ -150,7 +228,7 @@ const BookingPopup: React.FC<BookingPopupProps> = ({ onAccept, onDecline }) => {
               <Text style={styles.fareLabel}>Estimated Fare</Text>
               <Text style={styles.fareAmount}>{formattedPrice}</Text>
             </View>
-          </View>
+          </ScrollView>
 
           {/* Action buttons */}
           <View style={styles.buttonContainer}>
@@ -185,6 +263,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+    maxHeight: '80%', // Prevent popup from taking full screen
   },
   header: {
     backgroundColor: '#FFBB84',
@@ -217,10 +296,11 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+    maxHeight: 300, // Limit height and allow scrolling
   },
   detailRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start', // Changed to flex-start to handle multiline text
     marginBottom: 12,
   },
   detailText: {
@@ -228,6 +308,7 @@ const styles = StyleSheet.create({
     color: '#333',
     marginLeft: 12,
     flex: 1,
+    lineHeight: 20, // Better line height for multiline text
   },
   fareContainer: {
     backgroundColor: '#F8F8F8',
