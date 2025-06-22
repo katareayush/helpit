@@ -54,14 +54,16 @@ export default function CustomerLayout() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="BookingScreen" /> 
+      <Stack.Screen name="DriverServiceScreen" />
       <Stack.Screen name="HomeScreen" />
-      <Stack.Screen name="ProfileScreenCustomer" />
       <Stack.Screen name="MyBookingScreen" />
       <Stack.Screen name="PaymentsScreen" />
-      <Stack.Screen name="DriverServiceScreen" />
-      <Stack.Screen name="CleaningServiceListScreen" />
-      <Stack.Screen name="CleaningServiceBookingScreen" />
-      <Stack.Screen name="HelperServiceScreen" />
+      <Stack.Screen name="ProfileScreenCustomer" />
+      <Stack.Screen name="ServiceProviderScreen" />
+      <Stack.Screen name="BuyCreditsScreen" />
+      <Stack.Screen name="PrivacyPolicy" />
+      <Stack.Screen name="TermsAndCondition" />
     </Stack>
   );
 }

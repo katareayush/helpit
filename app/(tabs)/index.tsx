@@ -1,15 +1,53 @@
-import React, { useRef, useState } from 'react';
-import { View, Text, FlatList, Image, Dimensions, TouchableOpacity, StatusBar, StyleSheet } from 'react-native';
+import React, { useRef, useState, useEffect, useContext } from 'react';
+import { View, Text, FlatList, Image, Dimensions, TouchableOpacity, StatusBar, StyleSheet, Platform, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router'; 
 import Svg, { Circle } from 'react-native-svg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AuthContext } from '@/app/_layout';
 
 const { width, height } = Dimensions.get('window');
 
 const OnboardingScreen = () => {
-  // Use router instead of navigation
   const router = useRouter();
+  const { setAuthState } = useContext(AuthContext);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef(null);
+
+  // Check authentication on component mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const token = await AsyncStorage.getItem('accessToken');
+        const role = await AsyncStorage.getItem('userRole');
+
+        if (token && role) {
+          setAuthState(true, role);
+          if (role === 'customer' || role === 'USER') {
+            router.replace('/(customer)/HomeScreen');
+          } else if (role === 'SERVICE_PROVIDER' || role === 'service') {
+            router.replace('/(service)/ProfileScreen');
+          }
+        } else {
+          setIsLoading(false); // Stop loading if not authenticated
+        }
+      } catch (error) {
+        console.error('Error checking authentication:', error);
+        setIsLoading(false); // Stop loading on error
+      }
+    };
+
+    checkAuth();
+  }, [router, setAuthState]);
+
+  if (isLoading) {
+    // Show a loading indicator while checking authentication
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#FFBB84" />
+      </View>
+    );
+  }
 
   const slides = [
     {
@@ -47,11 +85,7 @@ const OnboardingScreen = () => {
     if (currentIndex < slides.length - 1) {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
     } else {
-      // Use router to navigate directly with the path
-      router.push('/(auth)/login-selection');
-      
-      // If your route is nested deeper, you can use the full path:
-      // router.push('/auth/login-selection');
+      router.replace('/(auth)/login-selection');
     }
   };
 
@@ -116,6 +150,11 @@ const OnboardingScreen = () => {
                 </View>
               </View>
             </View>
+            
+            {/* Android-specific fix: Extra white view at bottom to eliminate margin */}
+            {Platform.OS === 'android' && (
+              <View style={styles.androidBottomFix} />
+            )}
           </View>
         )}
       />
@@ -156,6 +195,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFBB84', // Peach-orange background as in image
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFBB84',
+  },
   slide: {
     width,
     height,
@@ -193,6 +238,16 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     paddingTop: 20,
+  },
+  // Android-specific bottom fix - extra white view to eliminate margin
+  androidBottomFix: {
+    position: 'absolute',
+    bottom: -55, // Extend beyond the bottom of the screen
+    left: 0,
+    right: 0,
+    height: 100, // Make it tall enough to cover any gap
+    backgroundColor: '#fff',
+    zIndex: -1, // Position behind other elements
   },
   contentContainer: {
     width: '90%',
@@ -251,8 +306,11 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 30,
     fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 34,
+    paddingBottom: 2,
   }
 });
 

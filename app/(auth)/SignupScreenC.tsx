@@ -13,16 +13,15 @@ import {
   FlatList
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { AntDesign, Feather } from '@expo/vector-icons';
+import { AntDesign, Feather, Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 
 // Replace with your actual API base URL
-const apiUrl = process.env.EXPO_PUBLIC_API_BASE_URL ;
+const apiUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
 
 interface FormData {
   name: string;
   email: string;
-  countryCode: string;
   phoneNumber: string;
   gender: string;
   password: string;
@@ -32,7 +31,6 @@ interface FormData {
 interface FormErrors {
   name?: string;
   email?: string;
-  countryCode?: string;
   phoneNumber?: string;
   gender?: string;
   password?: string;
@@ -47,7 +45,6 @@ const SignupScreen: React.FC = () => {
   const [formData, setFormData] = useState<FormData>({
     name: '',
     email: '',
-    countryCode: '+91', // Default value for India
     phoneNumber: '',
     gender: 'male', // Default value must be lowercase
     password: '',
@@ -55,30 +52,11 @@ const SignupScreen: React.FC = () => {
   });
   
   // UI state
-  const [showCountryModal, setShowCountryModal] = useState<boolean>(false);
   const [showGenderModal, setShowGenderModal] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
   const [errors, setErrors] = useState<FormErrors>({});
-  
-  // Country code options
-  const countryCodes = [
-    { code: '+91', name: 'India' },
-    { code: '+1', name: 'USA' },
-    { code: '+44', name: 'UK' },
-    { code: '+971', name: 'UAE' },
-    { code: '+61', name: 'Australia' },
-    { code: '+86', name: 'China' },
-    { code: '+81', name: 'Japan' },
-    { code: '+49', name: 'Germany' },
-    { code: '+33', name: 'France' },
-    { code: '+7', name: 'Russia' },
-    { code: '+65', name: 'Singapore' },
-    { code: '+82', name: 'South Korea' },
-    { code: '+55', name: 'Brazil' },
-    { code: '+52', name: 'Mexico' },
-    { code: '+27', name: 'South Africa' }
-  ];
+  const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
   
   // Gender options - must have exact values that backend expects
   const genderOptions = [
@@ -104,57 +82,57 @@ const SignupScreen: React.FC = () => {
   };
 
   // Validate form
-  // Update the gender validation in validateForm() method
-const validateForm = (): boolean => {
-  let newErrors: FormErrors = {};
-  
-  // Name validation
-  if (!formData.name.trim()) {
-    newErrors.name = 'Name is required';
-  }
-  
-  // Email validation
-  if (!formData.email.trim()) {
-    newErrors.email = 'Email is required';
-  } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-    newErrors.email = 'Email is invalid';
-  }
-  
-  // Country code validation
-  if (!formData.countryCode) {
-    newErrors.countryCode = 'Country code is required';
-  }
-  
-  // Phone validation - should be 10 digits without country code
-  if (!formData.phoneNumber.trim()) {
-    newErrors.phoneNumber = 'Phone number is required';
-  } else if (!/^\d{10}$/.test(formData.phoneNumber.replace(/[^0-9]/g, ''))) {
-    newErrors.phoneNumber = 'Phone number must be 10 digits';
-  }
-  
-  // Gender validation - must match backend expectations (MALE, FEMALE, OTHER)
-  if (!formData.gender) {
-    newErrors.gender = 'Gender is required';
-  } else if (!['male', 'female', 'other'].includes(formData.gender.toLowerCase())) {
-    // Still validate using lowercase in the frontend for consistency
-    newErrors.gender = 'Gender must be male, female, or other';
-  }
-  
-  // Password validation
-  if (!formData.password) {
-    newErrors.password = 'Password is required';
-  } else if (formData.password.length < 6) {
-    newErrors.password = 'Password must be at least 6 characters';
-  }
-  
-  // Confirm password validation
-  if (formData.password !== formData.confirmPassword) {
-    newErrors.confirmPassword = 'Passwords do not match';
-  }
-  
-  setErrors(newErrors);
-  return Object.keys(newErrors).length === 0;
-};
+  const validateForm = (): boolean => {
+    let newErrors: FormErrors = {};
+    
+    // Name validation
+    if (!formData.name.trim()) {
+      newErrors.name = 'Name is required';
+    }
+    
+    // Email validation
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Email is invalid';
+    }
+    
+    // Phone validation - should be 10 digits
+    if (!formData.phoneNumber.trim()) {
+      newErrors.phoneNumber = 'Phone number is required';
+    } else if (!/^\d{10}$/.test(formData.phoneNumber.replace(/[^0-9]/g, ''))) {
+      newErrors.phoneNumber = 'Phone number must be 10 digits';
+    }
+    
+    // Gender validation - must match backend expectations (MALE, FEMALE, OTHER)
+    if (!formData.gender) {
+      newErrors.gender = 'Gender is required';
+    } else if (!['male', 'female', 'other'].includes(formData.gender.toLowerCase())) {
+      // Still validate using lowercase in the frontend for consistency
+      newErrors.gender = 'Gender must be male, female, or other';
+    }
+    
+    // Password validation
+    if (!formData.password) {
+      newErrors.password = 'Password is required';
+    } else if (formData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+    }
+    
+    // Confirm password validation
+    if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = 'Passwords do not match';
+    }
+
+    // Terms acceptance validation
+    if (!termsAccepted) {
+      Alert.alert('Error', 'Please accept the Terms & Conditions and Privacy Policy to continue');
+      return false;
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   // Handle signup
   const handleSignup = async (): Promise<void> => {
@@ -169,8 +147,8 @@ const validateForm = (): boolean => {
       const apiData = {
         name: formData.name.trim(),
         email: formData.email.trim(),
-        phoneNumber: `${formData.countryCode}${formData.phoneNumber.replace(/[^0-9]/g, '')}`,
-        gender: formData.gender.toUpperCase().trim(),
+        phoneNumber: formData.phoneNumber.replace(/[^0-9]/g, ''),
+        gender: formData.gender.toUpperCase(), // Backend expects uppercase gender
         password: formData.password
       };
       
@@ -181,68 +159,47 @@ const validateForm = (): boolean => {
         }
       });
       
-      // Handle success
+      // Handle successful registration
       Alert.alert(
-        "Signup Successful",
-        "Please check your email for verification instructions.",
-        [{ text: "OK", onPress: () => router.push('/signInC') }]
+        "Registration Successful",
+        "Please give us a moment to verify your account.",
+        [{ text: "OK", onPress: () => router.push('/(auth)/signInC') }]
       );
     } catch (error: any) {
-      // Handle error
+      // Handle specific error cases
       let errorMessage = 'Registration failed. Please try again.';
       
-      // Get more specific error message if available
       if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       } else if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
       }
       
-      Alert.alert("Error", errorMessage);
+      // Check if it's a user already exists error but account is not verified
+      if (error.response?.status === 400 && 
+          error.response?.data?.message?.includes("User Already Exist")) {
+        Alert.alert(
+          "Account Already Exists",
+          "An account with this email or phone number already exists. Please login or use different credentials.",
+          [{ text: "Login", onPress: () => router.push('/(auth)/signInC') },
+           { text: "Try Again", onPress: () => {} }]
+        );
+      } else {
+        Alert.alert("Registration Error", errorMessage);
+      }
+      
       console.error('Signup error:', error.response?.data || error.message || error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Country code modal
-  const renderCountryCodeModal = () => {
-    return (
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={showCountryModal}
-        onRequestClose={() => setShowCountryModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country Code</Text>
-              <TouchableOpacity onPress={() => setShowCountryModal(false)}>
-                <AntDesign name="close" size={24} color="#333" />
-              </TouchableOpacity>
-            </View>
-            
-            <FlatList
-              data={countryCodes}
-              keyExtractor={(item) => item.code}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.countryItem}
-                  onPress={() => {
-                    handleChange('countryCode', item.code);
-                    setShowCountryModal(false);
-                  }}
-                >
-                  <Text style={styles.countryCode}>{item.code}</Text>
-                  <Text style={styles.countryName}>{item.name}</Text>
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </View>
-      </Modal>
-    );
+  const goToTermsConditions = () => {
+    router.push('/TermsAndCondition');
+  };
+
+  const goToPrivacyPolicy = () => {
+    router.push('/PrivacyPolicy');
   };
   
   // Gender modal - similar approach to country code for consistency
@@ -317,28 +274,18 @@ const validateForm = (): boolean => {
           />
           {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
           
-          <View style={styles.phoneContainer}>
-            <TouchableOpacity
-              style={[styles.countryCodePicker, errors.countryCode && styles.inputError]}
-              onPress={() => setShowCountryModal(true)}
-            >
-              <Text style={styles.countryCodeText}>{formData.countryCode}</Text>
-              <AntDesign name="down" size={12} color="#666" />
-            </TouchableOpacity>
-            
-            <TextInput
-              style={[styles.phoneInput, errors.phoneNumber && styles.inputError]}
-              placeholder="Phone Number"
-              placeholderTextColor="#666"
-              keyboardType="phone-pad"
-              value={formData.phoneNumber}
-              onChangeText={(text) => handleChange('phoneNumber', text.replace(/[^0-9]/g, ''))}
-              maxLength={10}
-            />
-          </View>
-          {(errors.countryCode || errors.phoneNumber) && (
+          <TextInput
+            style={[styles.input, errors.phoneNumber && styles.inputError]}
+            placeholder="Phone Number (10 digits)"
+            placeholderTextColor="#666"
+            keyboardType="phone-pad"
+            value={formData.phoneNumber}
+            onChangeText={(text) => handleChange('phoneNumber', text.replace(/[^0-9]/g, ''))}
+            maxLength={10}
+          />
+          {errors.phoneNumber && (
             <Text style={styles.errorText}>
-              {errors.countryCode || errors.phoneNumber}
+              {errors.phoneNumber}
             </Text>
           )}
           
@@ -390,10 +337,43 @@ const validateForm = (): boolean => {
           </View>
           {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
 
+          {/* Terms & Conditions Checkbox */}
+          <View style={styles.termsContainer}>
+            <TouchableOpacity 
+              onPress={() => setTermsAccepted(!termsAccepted)}
+              style={styles.checkboxContainer}
+              disabled={loading}
+            >
+              <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}>
+                {termsAccepted && (
+                  <Ionicons name="checkmark" size={14} color="white" />
+                )}
+              </View>
+            </TouchableOpacity>
+            <View style={styles.termsTextContainer}>
+              <Text style={styles.termsText}>
+                I agree to the{' '}
+                <Text 
+                  style={styles.termsLink}
+                  onPress={goToTermsConditions}
+                >
+                  Terms & Conditions
+                </Text>
+                {' '}and{' '}
+                <Text 
+                  style={styles.termsLink}
+                  onPress={goToPrivacyPolicy}
+                >
+                  Privacy Policy
+                </Text>
+              </Text>
+            </View>
+          </View>
+
           <TouchableOpacity 
-            style={styles.signupButton}
+            style={[styles.signupButton, !termsAccepted && styles.signupButtonDisabled]}
             onPress={handleSignup}
-            disabled={loading}
+            disabled={loading || !termsAccepted}
           >
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
@@ -404,7 +384,7 @@ const validateForm = (): boolean => {
 
           <TouchableOpacity 
             style={styles.loginLink}
-            onPress={() => router.back()}
+            onPress={() => router.push('/(auth)/signInC')}
           >
             <Text style={styles.loginLinkText}>Already have an account? Login</Text>
           </TouchableOpacity>
@@ -469,32 +449,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginLeft: 5,
   },
-  // Phone input styles
-  phoneContainer: {
-    flexDirection: 'row',
-    marginBottom: 8,
-  },
-  countryCodePicker: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 10,
-    padding: 15,
-    width: 80,
-    marginRight: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  countryCodeText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  phoneInput: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    padding: 15,
-    borderRadius: 10,
-    fontSize: 16,
-  },
   // Gender selection styles
   genderSelector: {
     backgroundColor: '#f5f5f5',
@@ -534,12 +488,53 @@ const styles = StyleSheet.create({
   passwordVisibilityButton: {
     padding: 15,
   },
+  // Terms & Conditions styles
+  termsContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  checkboxContainer: {
+    marginRight: 12,
+    marginTop: 2,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'white',
+  },
+  checkboxChecked: {
+    backgroundColor: '#FDA172',
+    borderColor: '#FDA172',
+  },
+  termsTextContainer: {
+    flex: 1,
+  },
+  termsText: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  termsLink: {
+    color: '#FDA172',
+    fontWeight: '500',
+    textDecorationLine: 'underline',
+  },
   signupButton: {
     backgroundColor: '#FDA172',
     padding: 15,
     borderRadius: 10,
-    marginTop: 20,
+    marginTop: 10,
     alignItems: 'center',
+  },
+  signupButtonDisabled: {
+    backgroundColor: '#ccc',
   },
   signupButtonText: {
     color: '#fff',
@@ -555,7 +550,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
   },
-  // Modal styles
+  // Modal styles - kept for gender modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -580,21 +575,6 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
-  },
-  countryItem: {
-    flexDirection: 'row',
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  countryCode: {
-    width: 60,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  countryName: {
-    fontSize: 16,
     color: '#333',
   },
 });

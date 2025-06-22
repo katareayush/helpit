@@ -1,0 +1,14 @@
+// API Constants
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ;
+
+// Service types mapping
+export const SERVICE_TYPES = {
+  COOKING: 'COOKING',
+  HOME_CLEANING: 'HOME_CLEANING',
+  DRIVER: 'DRIVER',
+  HELPER: 'HELPER',
+  ELDERLY_CARE: 'ELDERLY_CARE',
+  CHILD_CARE: 'CHILD_CARE',
+  MOVING: 'MOVING',
+  ERRANDS: 'ERRANDS'
+};

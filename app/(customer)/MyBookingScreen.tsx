@@ -1,120 +1,317 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
   SafeAreaView,
   FlatList,
   StatusBar,
-  Pressable,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import CustomTabBar from '@/components/CustomTabBar';
+import axios from 'axios';
+import { API_BASE_URL } from '@/lib/api';
 
 type TabType = 'Upcoming' | 'Completed' | 'Cancelled';
 
 interface BookingProps {
-  id: string;
-  service: string;
-  date: string;
-  time: string;
-  provider: string;
+  _id: string;
+  serviceId: {
+    _id: string;
+    name: string;
+  };
+  serviceProviderId: {
+    _id: string;
+    name: string;
+  } | null;
+  status: 'PENDING' | 'ACCEPTED' | 'CANCELLED' | 'COMPLETED';
+  details: {
+    address?: string;
+    location?: {
+      latitude: number;
+      longitude: number;
+    };
+    description?: string;
+    bookingTime?: string;
+    // Add other fields from your actual data structure
+  };
+  estimatedFare: number;
+  bookingDate: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 const MyBookingsScreen = () => {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>('Upcoming');
+  const [bookings, setBookings] = useState<BookingProps[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
 
   const handleBack = () => {
     router.back();
   };
 
-  // Sample data for bookings
-  const upcomingBookings: BookingProps[] = [
-    {
-      id: '1',
-      service: 'Home Cleaning',
-      date: '2023-08-20',
-      time: '2:30 PM',
-      provider: 'John Smith',
-    },
-    // Add more sample bookings if needed
-  ];
+  // Fetch bookings from API
+  useEffect(() => {
+    fetchBookings();
+  }, []);
 
-  const completedBookings: BookingProps[] = [];
-  const cancelledBookings: BookingProps[] = [];
+  const fetchBookings = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = await getAuthToken();
+      if (!token) {
+        setError('Authentication token not found. Please log in again.');
+        setLoading(false);
+        return;
+      }
 
-  // Get the appropriate bookings based on active tab
-  const getBookings = () => {
+      const response = await axios.get(`${API_BASE_URL}/booking/user`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (response.data && response.data.data && response.data.data.bookings) {
+        setBookings(response.data.data.bookings);
+      } else {
+        setBookings([]);
+      }
+    } catch (err) {
+      console.error('Error fetching bookings:', err);
+      setError('Failed to load bookings. Please try again.');
+      Alert.alert('Error', 'Failed to load your bookings. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cancel a booking
+  const handleCancelBooking = async (bookingId: string) => {
+    Alert.alert(
+      'Cancel Booking',
+      'Are you sure you want to cancel this booking?',
+      [
+        {
+          text: 'No',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes',
+          onPress: async () => {
+            try {
+              setCancellingBookingId(bookingId);
+              const token = await getAuthToken();
+              if (!token) {
+                Alert.alert('Error', 'Authentication token not found. Please log in again.');
+                setCancellingBookingId(null);
+                return;
+              }
+
+              await axios.post(
+                `${API_BASE_URL}/booking/cancel/user`,
+                { bookingId },
+                {
+                  headers: {
+                    Authorization: `Bearer ${token}`
+                  }
+                }
+              );
+
+              // Update the booking status locally
+              setBookings(prevBookings => 
+                prevBookings.map(booking => 
+                  booking._id === bookingId 
+                    ? { ...booking, status: 'CANCELLED' } 
+                    : booking
+                )
+              );
+              
+              Alert.alert('Success', 'Booking cancelled successfully');
+            } catch (err) {
+              console.error('Error cancelling booking:', err);
+              Alert.alert('Error', 'Failed to cancel booking. Please try again.');
+            } finally {
+              setCancellingBookingId(null);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Filter bookings based on active tab
+  const getFilteredBookings = () => {
     switch (activeTab) {
       case 'Upcoming':
-        return upcomingBookings;
+        // Show both PENDING and ACCEPTED bookings in Upcoming tab
+        return bookings.filter(booking => 
+          booking.status === 'PENDING' || booking.status === 'ACCEPTED'
+        );
       case 'Completed':
-        return completedBookings;
+        return bookings.filter(booking => booking.status === 'COMPLETED');
       case 'Cancelled':
-        return cancelledBookings;
+        return bookings.filter(booking => booking.status === 'CANCELLED');
       default:
         return [];
     }
   };
 
+  // Format date for display
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-IN', { 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit' 
+    });
+  };
+
+  // Format time for display
+  const formatTime = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-IN', { 
+      hour: '2-digit', 
+      minute: '2-digit'
+    });
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'PENDING':
+        return <Ionicons name="time" size={20} color="#FDA172" />;
+      case 'ACCEPTED':
+        return <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />;
+      case 'COMPLETED':
+        return <Ionicons name="checkmark-done-circle" size={20} color="#4CAF50" />;
+      case 'CANCELLED':
+        return <Ionicons name="close-circle" size={20} color="#F44336" />;
+      default:
+        return <Ionicons name="help-circle" size={20} color="#9E9E9E" />;
+    }
+  };
+
+  const canCancelBooking = (booking: BookingProps) => {
+    return booking.status === 'PENDING' || booking.status === 'ACCEPTED';
+  };
+
   const renderBookingItem = ({ item }: { item: BookingProps }) => (
-    <View style={styles.bookingCard}>
-      <View style={styles.bookingHeader}>
-        <View style={styles.serviceRow}>
-          <View style={styles.serviceIconContainer}>
-            <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+    <View className="bg-white rounded-lg p-4 mb-4 border border-gray-200 shadow-sm">
+      <View className="flex-row justify-between items-center mb-2">
+        <View className="flex-row items-center flex-1">
+          <View className="mr-2">
+            {getStatusIcon(item.status)}
           </View>
-          <Text style={styles.serviceName}>{item.service}</Text>
+          <Text className="text-base font-semibold text-gray-800 flex-1">
+            {item.serviceId?.name || 'Service'}
+          </Text>
+          <View className={`px-2 py-1 rounded ${
+            item.status === 'PENDING' ? 'bg-orange-100' : 
+            item.status === 'ACCEPTED' ? 'bg-green-100' : 
+            item.status === 'COMPLETED' ? 'bg-green-100' : 
+            'bg-red-100'
+          }`}>
+            <Text className={`text-xs font-medium ${
+              item.status === 'PENDING' ? 'text-orange-600' : 
+              item.status === 'ACCEPTED' ? 'text-green-600' : 
+              item.status === 'COMPLETED' ? 'text-green-600' : 
+              'text-red-600'
+            }`}>
+              {item.status}
+            </Text>
+          </View>
         </View>
-        <Text style={styles.providerName}>{item.provider}</Text>
       </View>
-      <Text style={styles.bookingDate}>
-        {item.date.replace(/-/g, '/')} • {item.time}
+      
+      <Text className="text-sm text-gray-600 mb-1">
+        {item.serviceProviderId?.name || 'Awaiting provider'}
       </Text>
-      <TouchableOpacity style={styles.detailsButton}>
-        <Text style={styles.detailsButtonText}>View Details</Text>
-      </TouchableOpacity>
+      
+      {item.details?.address && (
+        <Text className="text-sm text-gray-500 mb-1">
+          <Text className="font-medium">Address:</Text> {item.details.address}
+        </Text>
+      )}
+      
+      {item.details?.description && (
+        <Text className="text-sm text-gray-500 mb-1">
+          <Text className="font-medium">Description:</Text> {item.details.description}
+        </Text>
+      )}
+      
+      <Text className="text-sm text-gray-500 mb-3">
+        {formatDate(item.bookingDate)} • {formatTime(item.bookingDate)}
+      </Text>
+      
+      <View className="flex-row justify-between items-center mb-4 px-1">
+        <Text className="text-sm font-medium text-gray-700">Estimated Fare:</Text>
+        <Text className="text-base font-semibold text-orange-500">₹{item.estimatedFare.toFixed(2)}</Text>
+      </View>
+      
+      <View className="flex-row">
+        {canCancelBooking(item) && (
+          <TouchableOpacity 
+            className="w-full items-center py-2.5 border border-red-500 rounded-md bg-red-500"
+            onPress={() => handleCancelBooking(item._id)}
+            disabled={cancellingBookingId === item._id}
+          >
+            {cancellingBookingId === item._id ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <Text className="text-sm font-medium text-white">Cancel Booking</Text>
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 
   const renderEmptyList = () => (
-    <View style={styles.emptyContainer}>
-      <Text style={styles.emptyText}>No {activeTab.toLowerCase()} bookings</Text>
+    <View className="items-center justify-center py-10">
+      {loading ? (
+        <ActivityIndicator size="large" color="#FDA172" />
+      ) : (
+        <Text className="text-base text-gray-500">No {activeTab.toLowerCase()} bookings</Text>
+      )}
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    <SafeAreaView className="flex-1 bg-gray-100">
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Ionicons name="arrow-back" size={24} color="#000" />
+      <View className="flex-row items-center px-4 py-3 bg-white justify-between">
+        <TouchableOpacity className="p-1" onPress={handleBack}>
+          <Ionicons name="arrow-back" size={24} color="#000000" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Bookings</Text>
-        <View style={styles.placeholderView} />
+        <Text className="text-lg font-medium text-gray-800">My Bookings</Text>
+        <TouchableOpacity className="p-1" onPress={fetchBookings}>
+          <Ionicons name="refresh" size={24} color="#FDA172" />
+        </TouchableOpacity>
       </View>
 
       {/* Tab Navigation */}
-      <View style={styles.tabContainer}>
+      <View className="flex-row mb-5 rounded-lg overflow-hidden border border-gray-200 mx-4 mt-4">
         {(['Upcoming', 'Completed', 'Cancelled'] as TabType[]).map((tab) => (
           <TouchableOpacity
             key={tab}
-            style={[
-              styles.tab,
-              activeTab === tab && styles.activeTab,
-            ]}
+            className={`flex-1 py-3 items-center bg-white ${
+              activeTab === tab ? 'border-b-2 border-orange-400' : ''
+            }`}
             onPress={() => setActiveTab(tab)}
           >
             <Text
-              style={[
-                styles.tabText,
-                activeTab === tab && styles.activeTabText,
-              ]}
+              className={`text-sm font-medium ${
+                activeTab === tab ? 'text-orange-400' : 'text-gray-600'
+              }`}
             >
               {tab}
             </Text>
@@ -123,162 +320,48 @@ const MyBookingsScreen = () => {
       </View>
 
       {/* Bookings List */}
-      <FlatList
-        data={getBookings()}
-        renderItem={renderBookingItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={renderEmptyList}
-      />
+      {error ? (
+        <View className="flex-1 items-center justify-center p-5">
+          <Text className="text-base text-red-500 mb-4 text-center">{error}</Text>
+          <TouchableOpacity 
+            className="px-5 py-2.5 bg-orange-400 rounded-md"
+            onPress={fetchBookings}
+          >
+            <Text className="text-white font-medium">Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={getFilteredBookings()}
+          renderItem={renderBookingItem}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
+          className="px-4 pb-20"
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={renderEmptyList}
+          refreshing={loading}
+          onRefresh={fetchBookings}
+        />
+      )}
 
       <CustomTabBar activeRoute="Bookings" />
     </SafeAreaView>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-  },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '400',
-    color: '#333',
-    marginLeft: 16, // Add margin to move text right of back button
-  },
-  placeholderView: {
-    flex: 1, // This will push the placeholder to take remaining space
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    marginBottom: 30,
-    borderRadius: 8,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#EEEEEE',
-    marginHorizontal: 16,
-    marginTop: 16,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  activeTab: {
-    backgroundColor: '#white',
-  },
-  tabText: {
-    fontSize: 14,
-    color: '#666666',
-    fontWeight: '500',
-  },
-  activeTabText: {
-    color: '#000000',
-    fontWeight: '600',
-  },
-  listContainer: {
-    padding: 16,
-    paddingBottom: 80, // Extra padding to account for bottom tab bar
-  },
-  bookingCard: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  bookingHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  serviceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  serviceIconContainer: {
-    marginRight: 8,
-  },
-  serviceName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  providerName: {
-    fontSize: 14,
-    color: '#666',
-  },
-  bookingDate: {
-    fontSize: 14,
-    color: '#888',
-    marginBottom: 16,
-  },
-  detailsButton: {
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 6,
-  },
-  detailsButtonText: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 30,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#888',
-  },
-  bottomTabBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderBottomWidth: 25,
-    borderTopColor: '#eee',
-    height: 100,
-    paddingBottom: 8,
-  },
-  tabBarItem: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  activeTabBarItem: {
-  },
-  tabBarItemText: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 4,
-  },
-  activeTabBarItemText: {
-    fontSize: 12,
-    color: '#FDA172',
-    marginTop: 4,
-  },
-});
+// Helper function to get auth token from AsyncStorage
+const getAuthToken = async () => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    if (!token) {
+      console.warn('No access token found in AsyncStorage');
+      return null;
+    }
+    return token;
+  } catch (error) {
+    console.error('Error getting access token from AsyncStorage:', error);
+    return null;
+  }
+};
 
 export default MyBookingsScreen;
